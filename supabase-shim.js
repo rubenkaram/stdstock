@@ -47,11 +47,35 @@ window.__LOCAL = true; // habilita Respaldo en Parámetros
     return { status: 'saved' };
   } };
   window.__backup = () => JSON.stringify(Object.fromEntries(mem));
+  function panel(html) {
+    let el = document.getElementById('restoreBox');
+    if (!el) { el = document.createElement('div'); el.id = 'restoreBox';
+      el.style.cssText = 'position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:16px';
+      document.body.appendChild(el); }
+    el.innerHTML = `<div style="background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(440px,100%);display:grid;gap:10px;font-size:14px">${html}</div>`;
+    return el;
+  }
   window.__restore = async json => {
-    const o = JSON.parse(json); if (!o['config/params']) throw new Error('no es un respaldo de esta app');
-    const { error: e1 } = await sb.from('docs').delete().neq('path', ''); if (e1) throw err(e1);
-    const rows = Object.entries(o).map(([path, data]) => ({ path, data, updated_at: new Date().toISOString() }));
-    for (let i = 0; i < rows.length; i += 20) { const { error } = await sb.from('docs').upsert(rows.slice(i, i + 20)); if (error) throw err(error); }
+    let o; try { o = JSON.parse(json); } catch (e) { throw new Error('el archivo no es un respaldo válido'); }
+    if (!o['config/params']) throw new Error('no es un respaldo de esta app');
+    const entries = Object.entries(o); const fails = [];
+    panel(`<b>Restaurando respaldo…</b><div id="rsMsg">Borrando datos anteriores</div>`);
+    const { error: e1 } = await sb.from('docs').delete().neq('path', '');
+    if (e1) { panel(`<b>No se pudo restaurar</b><div>Supabase no dejó borrar los datos anteriores: ${e1.message}</div><button class="btn" onclick="this.closest('#restoreBox').remove()">Cerrar</button>`); throw new Error(e1.message); }
+    for (let i = 0; i < entries.length; i++) {
+      const [path, data] = entries[i];
+      const m = document.getElementById('rsMsg'); if (m) m.textContent = `Subiendo ${i + 1} de ${entries.length}: ${path}`;
+      let ok = false, last = null;
+      for (let t = 0; t < 3 && !ok; t++) { const { error } = await sb.from('docs').upsert({ path, data, updated_at: new Date().toISOString() }); if (error) { last = error; await new Promise(r => setTimeout(r, 800)); } else ok = true; }
+      if (!ok) fails.push(`${path}: ${last && last.message}`);
+    }
+    const { count, error: e2 } = await sb.from('docs').select('path', { count: 'exact', head: true });
+    const got = e2 ? '?' : count;
+    if (fails.length || got !== entries.length) {
+      panel(`<b>La restauración quedó incompleta</b><div>Se guardaron ${got} de ${entries.length} registros.</div>${fails.length ? `<pre style="white-space:pre-wrap;font-size:12px;max-height:200px;overflow:auto">${fails.join('\n').replace(/</g, '&lt;')}</pre>` : ''}<div>Sacá una captura de este mensaje para revisarlo.</div><button class="btn" onclick="location.reload()">Cerrar y recargar</button>`);
+      throw new Error('restauración incompleta');
+    }
+    panel(`<b>Respaldo restaurado</b><div>Se guardaron ${got} registros en Supabase. La página se va a recargar.</div>`);
   };
 
   /* Pantalla de ingreso */
