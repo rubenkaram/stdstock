@@ -130,15 +130,14 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
     <div class="toprow">
       <div class="brand"><h1>Estándar Stock</h1><span>Pedido sugerido de repuestos · Karam</span></div>
       <div class="chips" id="chips"></div>
-      <div class="suc"><label for="origSel">Origen</label><select id="origSel"><option value="N">N · Original</option><option value="P">P · Nacional</option><option value="">Todos</option></select><label for="sucSel">Sucursal</label><select id="sucSel"></select></div>
+      <div class="suc"><label for="origSel">Origen</label><select id="origSel"><option value="N">N · Original</option><option value="P">P · Nacional</option><option value="">Todos</option></select><label for="sucSel">Sucursal</label><select id="sucSel"></select><span id="userBox"></span></div>
     </div>
     <nav class="tabs" id="tabs" role="tablist"></nav>
   </div>
 </header>
 <div class="wrap"><main id="main"><div class="empty">Cargando datos guardados…</div></main></div>
 <div id="toast" class="toast" hidden></div>
-<script>/* Opcional: completar para no tener que cargar la conexión en cada computadora */
-window.APP_CONFIG = { SUPABASE_URL: "https://hwisgyheyggdmtbkfncm.supabase.co", SUPABASE_ANON_KEY: "sb_publishable_DmDl2MHeQFct70rTxlFv6w_xixX919n" };</script>
+<script>window.APP_CONFIG = { SUPABASE_URL: "https://hwisgyheyggdmtbkfncm.supabase.co", SUPABASE_ANON_KEY: "sb_publishable_DmDl2MHeQFct70rTxlFv6w_xixX919n" };</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>/* Adaptador Supabase: guarda los datos de la app en la tabla "docs" y los archivos exportados en el bucket "archivos" */
 window.__LOCAL = true; // habilita Respaldo en Parámetros
@@ -263,12 +262,19 @@ window.__LOCAL = true; // habilita Respaldo en Parámetros
     document.getElementById('lgMsg').textContent = msg || '';
   }
   async function start() {
+    const { data: ses } = await sb.auth.getSession();
+    const email = ses && ses.session && ses.session.user && ses.session.user.email;
+    if (!email) { showLogin(); return; }
+    const { data: urows, error: ue } = await sb.from('usuarios').select('email,sucursal,admin').ilike('email', email);
+    if (ue) { showLogin('No se pudieron leer los permisos: ' + ue.message); return; }
+    const u = urows && urows[0];
+    if (!u || (!u.admin && !u.sucursal)) { await sb.auth.signOut(); showLogin(`El usuario ${email} no tiene una sucursal asignada. Pedile al administrador que lo agregue en la tabla usuarios.`); return; }
+    window.__USER = { email: email.toLowerCase(), sucursal: u.sucursal, admin: !!u.admin };
     try { await loadAll(); } catch (e) { showLogin('No se pudieron leer los datos: ' + e.message); return; }
     const el = document.getElementById('login'); if (el) el.remove();
-    const b = document.createElement('button'); b.id = 'logout'; b.className = 'btn sm'; b.textContent = 'Salir';
-    b.onclick = async () => { await sb.auth.signOut(); location.reload(); }; document.body.appendChild(b);
     resolveReady();
   }
+  window.__logout = async () => { await sb.auth.signOut(); try { localStorage.removeItem('stdstock-suc'); } catch (e) {} location.reload(); };
   sb.auth.getSession().then(({ data }) => { if (data.session) start(); else showLogin(); });
   window.claude = { use: async n => { await ready; return n === 'db' ? { doc: docRef, collection: colRef } : n === 'downloads' ? downloads : null; } };
 })();
@@ -565,8 +571,11 @@ let db=null,dl=null;
 const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca'],sucMap:{'CASA CENTRAL':'La Rioja'},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
   tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
   ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
-const TABS=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
 const stdKey=()=>S.P.sucursal||'La Rioja';
+const ME=()=>window.__USER||null;
+const isAdmin=()=>!ME()||!!ME().admin;
+function logAct(tipo,detalle,suc){if(!db||!ME())return;db.collection('actividad').add({fecha:new Date().toISOString(),usuario:ME().email,sucursal:suc||S.P.sucursal,tipo,detalle:detalle||''}).catch(()=>{})}
 const stdSet=()=>{const k=stdKey();if(!S.stdBy[k])S.stdBy[k]=[];return new Set(S.stdBy[k])};
 
 function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3800)}
@@ -625,7 +634,7 @@ async function useSuc(suc){
   S.D.ventas=o.ventas;S.D.stock=o.stock;S.D.wings=wingsFor(suc,o);
   S.finals=S.finalsBy[suc]||(S.finalsBy[suc]={});
 }
-const saveParams=()=>queueWrite('config/params',()=>S.P);
+const saveParams=()=>{if(ME()){try{localStorage.setItem('stdstock-suc',S.P.sucursal)}catch(e){}}if(isAdmin())queueWrite('config/params',()=>S.P)};
 const saveStd=()=>queueWrite('config/std',()=>({bySuc:S.stdBy}));
 const saveSucs=()=>queueWrite('config/sucursales',()=>({list:S.sucs,map:S.sucMap}));
 const saveDraft=()=>{S.finalsBy[S.P.sucursal]=S.finals;queueWrite('config/draft',()=>({bySuc:JSON.stringify(S.finalsBy)}),1200)};
@@ -640,10 +649,13 @@ async function boot(){
     if(s.exists)S.stdBy=Object.assign({},s.data().bySuc||{});
     if(d.exists){try{S.finalsBy=JSON.parse(d.data().bySuc||'{}')}catch(e){}}
     if(sc.exists){S.sucs=sc.data().list||S.sucs;S.sucMap=sc.data().map||{}}
+    if(ME()&&!ME().admin){S.P.sucursal=ME().sucursal;if(!S.sucs.includes(S.P.sucursal))S.sucs.push(S.P.sucursal)}
+    else if(ME()){try{const ls=localStorage.getItem('stdstock-suc');if(ls&&S.sucs.includes(ls))S.P.sucursal=ls}catch(e){}}
     if(!S.sucs.includes(S.P.sucursal))S.P.sucursal=S.sucs[0];
     const [oq,ddp,base]=await Promise.all(['oq','ddp','wingsBase'].map(readDataset));
     S.D.oq=oq;S.D.ddp=ddp;S.base=base;
     await useSuc(S.P.sucursal);
+    if(ME()&&ME().admin)db.collection('actividad').onSnapshot(snap=>{S.act=snap.docs.map(x=>x.data()).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&S.tab==='actividad')render()},()=>{});
     db.collection('sugeridos').onSnapshot(snap=>{S.saved=snap.docs.map(x=>Object.assign({id:x.id},x.data())).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&(S.tab==='historial'))render();renderChips()},()=>{});
   }catch(e){toast('Error al leer los datos guardados: '+(e.message||e.code))}
   S.loading=false;recompute();render();
@@ -660,6 +672,7 @@ const finalOf=l=>S.finals[l.code]!=null?S.finals[l.code]:l.sug;
 
 /* ---------- Shell ---------- */
 function renderShell(){
+  const TABS=TABS0.concat(ME()&&ME().admin?[['actividad','Actividad']]:[]);
   $('#tabs').innerHTML=TABS.map(([k,t])=>`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${t}</button>`).join('');
   renderChips();
 }
@@ -673,13 +686,15 @@ function renderChips(){
   if(S.noDb)ch.push(`<span class="chip"><i class="dot warn"></i>Sin guardado: los datos se pierden al cerrar</span>`);
   $('#chips').innerHTML=ch.join('');
   $('#origSel').value=S.P.origen||'';
-  $('#sucSel').innerHTML=S.sucs.map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+'<option value="__add">+ Agregar sucursal…</option>';
+  const u=ME();$('#userBox').innerHTML=u?`<span class="chip" title="${u.admin?'Administrador: ve todas las sucursales':'Solo '+esc(u.sucursal)}"><b>${esc(u.email)}</b>${u.admin?' · admin':''}</span><button class="btn sm" data-act="logout">Salir</button>`:'';
+  $('#sucSel').disabled=!isAdmin();
+  $('#sucSel').innerHTML=(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+(isAdmin()?'<option value="__add">+ Agregar sucursal…</option>':'');
 }
 function render(){
   renderShell();
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
-  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams}[S.tab];
+  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
 }
@@ -870,6 +885,15 @@ function bindChart(){
   el.querySelectorAll('rect[data-i]').forEach(r=>{r.addEventListener('mouseenter',()=>{const i=+r.dataset.i;const b=r.getBoundingClientRect(),e=el.getBoundingClientRect();tip.textContent=`${fMes(ms[i])}: ${fN(vals[i])} u`;tip.style.left=(b.left-e.left+b.width/2)+'px';tip.style.top=(e.height*(y(vals[i])/H))+'px';tip.hidden=false});r.addEventListener('mouseleave',()=>tip.hidden=true)});
 }
 
+/* ---------- Vista: Actividad (solo admin) ---------- */
+function vAct2(){
+  const L=S.act||[],u=S.ui;const users=[...new Set(L.map(x=>x.usuario))].sort();
+  const F=L.filter(x=>(!u.actSuc||x.sucursal===u.actSuc)&&(!u.actUser||x.usuario===u.actUser));
+  return `<section class="panel"><div class="panel-h"><div><h2>Actividad</h2><p class="sub">Qué cargó o cambió cada usuario, de lo más nuevo a lo más viejo.</p></div>
+    <div class="toolbar"><select id="actSuc"><option value="">Todas las sucursales</option>${S.sucs.map(s=>`<option${s===u.actSuc?' selected':''}>${esc(s)}</option>`).join('')}</select><select id="actUser"><option value="">Todos los usuarios</option>${users.map(s=>`<option${s===u.actUser?' selected':''}>${esc(s)}</option>`).join('')}</select></div></div>
+  ${F.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Sucursal</th><th>Qué hizo</th><th>Detalle</th></tr></thead><tbody>${F.slice(0,500).map(x=>`<tr><td>${new Date(x.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</td><td>${esc(x.usuario)}</td><td>${esc(x.sucursal)}</td><td>${esc(x.tipo)}</td><td class="desc" title="${esc(x.detalle)}">${esc(x.detalle)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay actividad registrada.</div>'}</section>`;
+}
+
 /* ---------- Vista: Historial ---------- */
 function vHist(){
   const u=S.ui;const L=S.saved;
@@ -884,7 +908,7 @@ function vHist(){
       <div class="tw"><table><thead><tr><th>Código</th><th>Descripción</th><th class="n">Stock</th><th class="n">Std</th><th class="n">Sugerido</th><th class="n">Pedido final</th><th class="n">Cto. rep.</th><th class="n">$ pedido</th></tr></thead><tbody>
       ${lines.map(r=>`<tr><td class="code">${esc(r[0])}</td><td class="desc">${esc(r[1])}</td><td class="n">${fN(r[2],1)}</td><td class="n">${fN(r[3])}</td><td class="n">${fN(r[4])}</td><td class="n hl">${fN(r[5])}</td><td class="n">${r[6]==null?'–':f$(r[6])}</td><td class="n">${f$(r[5]*(r[6]||0))}</td></tr>`).join('')}</tbody></table></div></section>`}
   return `<section class="panel"><div class="panel-h"><div><h2>Historial de sugeridos</h2><p class="sub">Cada vez que guardás un sugerido queda acá con sus cantidades finales, para consultarlo o volver a exportarlo.</p></div></div>
-  ${L.length?`<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${L.map(x=>`<div class="list-row${x.id===u.openSaved?' sel':''}" data-open="${x.id}"><div style="min-width:0"><b>${esc(x.nombre)}</b><div class="faint" style="font-size:12px">${new Date(x.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})} · ${esc(x.sucursal)} · ${esc(x.estado||'Borrador')}</div></div><div style="text-align:right;font-variant-numeric:tabular-nums">${fN(x.resumen.lineas)} líneas · ${fN(x.resumen.u)} u<div class="faint" style="font-size:12px">${f$(x.resumen.monto)}</div></div></div>`).join('')}</div>`
+  ${L.length?`<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${L.map(x=>`<div class="list-row${x.id===u.openSaved?' sel':''}" data-open="${x.id}"><div style="min-width:0"><b>${esc(x.nombre)}</b><div class="faint" style="font-size:12px">${new Date(x.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})} · ${esc(x.sucursal)} · ${esc(x.estado||'Borrador')}${x.usuario?' · '+esc(x.usuario):''}</div></div><div style="text-align:right;font-variant-numeric:tabular-nums">${fN(x.resumen.lineas)} líneas · ${fN(x.resumen.u)} u<div class="faint" style="font-size:12px">${f$(x.resumen.monto)}</div></div></div>`).join('')}</div>`
   :`<div class="empty">${S.noDb?'El guardado no está disponible en esta vista.':'Todavía no guardaste ningún sugerido. Revisá el pedido en <b>Pedido sugerido</b> y tocá <b>Guardar sugerido</b>.'}</div>`}</section>${det}`;
 }
 
@@ -913,7 +937,7 @@ async function saveManual(kind,form){
   if(kind==='oq'){const u=Math.round(num(form.u.value));if(!(u>=1)){toast('Escribí la unidad de venta.');return}if(u>1)cur.push([code,u]);msg=u>1?`${code}: se pide de a ${u}.`:`${code}: se pide de a 1.`}
   else{if(form.f.value==='D')cur.push([code]);msg=form.f.value==='D'?`${code} marcada como DDP.`:`${code} ya no es DDP.`}
   const meta=Object.assign({},S.D[kind]?S.D[kind].meta:{fileName:'Carga manual'},{manual:true});
-  try{await saveDataset(kind,meta,cur);recompute();render();toast(msg+' Guardado.')}catch(e){toast('No se pudo guardar: '+(e.message||e.code))}
+  try{await saveDataset(kind,meta,cur);logAct(kind==='oq'?'Corrigió order unit':'Corrigió DDP',msg,'Todas');recompute();render();toast(msg+' Guardado.')}catch(e){toast('No se pudo guardar: '+(e.message||e.code))}
 }
 function vDatos(){
   const D=S.D;
@@ -938,7 +962,7 @@ function vAutoWings(p){
       <div class="tile"><div class="l">En proceso</div><div class="v">${fN(cnt(3))}</div><div class="n">${fN(sum(3))} u</div></div>
       <div class="tile"><div class="l">Cupo OD</div><div class="v" style="font-size:18px">${g.meta.cupoMeses.length?fMes(g.meta.cupoMeses[0])+' – '+fMes(g.meta.cupoMeses[g.meta.cupoMeses.length-1]):'–'}</div><div class="n">promedio pedido de esos 4 meses</div></div>
     </div>
-    <div class="map"><label>Guardar en<select id="autoSuc">${S.sucs.map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value="__all"${p.sucApp==='__all'?' selected':''}>Las dos sucursales</option></select><small class="faint">Wings trae el código de empresa ${esc(a.empresa)}. Si La Rioja y Catamarca piden con el mismo código, elegí "Las dos sucursales".</small></label></div>
+    <div class="map"><label>Guardar en<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}${isAdmin()?`<option value="__all"${p.sucApp==='__all'?' selected':''}>Las dos sucursales</option>`:''}</select><small class="faint">Wings trae el código de empresa ${esc(a.empresa)}. Si La Rioja y Catamarca piden con el mismo código, elegí "Las dos sucursales".</small></label></div>
     <p class="faint" style="margin:10px 0 0">Estados: ${est.map(([k,v])=>`${esc(k)} (${fN(v)})`).join(' · ')}</p>
   </section>`;
 }
@@ -961,7 +985,7 @@ function vAuto(p){
       <div class="tile"><div class="l">Unidades</div><div class="v">${fN(units,1)}</div><div class="n">N original ${fN(oc.N||0)} · P nacional ${fN(oc.P||0)}</div></div>
       ${isV?'':`<div class="tile"><div class="l">Valorizado a costo</div><div class="v">${fM(val)}</div></div>`}
     </div>
-    <div class="map"><label>Guardar en la sucursal<select id="autoSuc">${S.sucs.map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select><small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
+    <div class="map"><label>Guardar en la sucursal<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select>${!isAdmin()&&a.suc&&S.sucMap[a.suc]&&S.sucMap[a.suc]!==S.P.sucursal?`<div class="note warn">Este informe es de <b>${esc(S.sucMap[a.suc])}</b> (Autologica: ${esc(a.suc)}), pero tu usuario carga ${esc(S.P.sucursal)}. Revisá que bajaste el archivo de tu sucursal.</div>`:''}<small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
     <h3 style="margin:14px 0 8px">Primeras filas</h3>
     <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   </section>`;
@@ -1002,11 +1026,11 @@ function setSheet(name){
   p.aoa=XLSX.utils.sheet_to_json(p.wb.Sheets[name],{header:1,raw:true,defval:null,blankrows:false});
   p.auto=null;const wh=detectWings(p.aoa);
   if(wh>=0){p.kind='wings';const pw=parseWings(p.aoa,wh);const emp=Object.keys(pw.emp).sort((a,b)=>pw.emp[b]-pw.emp[a])[0]||'';
-    p.auto=Object.assign({wings:true,empresa:emp,agg:aggWings(pw.raw)},pw);p.sucApp=S.sucMap['WINGS '+emp]||S.P.sucursal;
+    p.auto=Object.assign({wings:true,empresa:emp,agg:aggWings(pw.raw)},pw);p.sucApp=isAdmin()?(S.sucMap['WINGS '+emp]||S.P.sucursal):S.P.sucursal;
     render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
   const ak=detectAutologica(p.aoa);
   if(ak){if(ak!==p.kind){toast(`Este archivo es el informe de ${ak==='ventas'?'ventas':'stock'} de Autologica: se carga como ${ak==='ventas'?'ventas':'stock'}.`);p.kind=ak}
-    p.auto=ak==='ventas'?parseAutologicaVentas(p.aoa):parseAutologicaStock(p.aoa);p.sucApp=(p.auto.suc&&S.sucMap[p.auto.suc])||S.P.sucursal;
+    p.auto=ak==='ventas'?parseAutologicaVentas(p.aoa):parseAutologicaStock(p.aoa);p.sucApp=isAdmin()?((p.auto.suc&&S.sucMap[p.auto.suc])||S.P.sucursal):S.P.sucursal;
     render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
   p.h=detectHeader(p.kind,p.aoa);autoMap();
   if(p.kind==='stock'){const hdr=(p.aoa[p.h]||[]).join(' ');const m=hdr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);p.fecha=m?`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:new Date().toISOString().slice(0,10)}
@@ -1029,8 +1053,9 @@ function autoMap(){
 }
 async function confirmAutoWings(p){
   const a=p.auto,sel=($('#autoSuc')&&$('#autoSuc').value)||p.sucApp;const targets=sel==='__all'?S.sucs.slice():[sel];
-  S.sucMap['WINGS '+a.empresa]=sel;saveSucs();S.busy=true;render();
+  if(isAdmin()){S.sucMap['WINGS '+a.empresa]=sel;saveSucs()}S.busy=true;render();
   try{for(const s of targets)await saveDataset('wings',Object.assign({fileName:p.fileName,empresa:a.empresa},a.agg.meta),a.agg.rows,s);
+    targets.forEach(s=>logAct('Cargó pedidos Wings',`${p.fileName} · ${a.agg.rows.length} piezas`,s));
     toast(`Wings guardado en ${targets.join(' y ')}: ${fN(a.agg.rows.length)} piezas con pedidos.`);S.pending=null}
   catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
   S.busy=false;recompute();render();
@@ -1038,7 +1063,7 @@ async function confirmAutoWings(p){
 async function confirmAuto(p){
   if(p.auto.wings)return confirmAutoWings(p);
   const a=p.auto,suc=(($('#autoSuc')&&$('#autoSuc').value)||p.sucApp||S.P.sucursal).trim();
-  if(a.suc&&S.sucMap[a.suc]!==suc){S.sucMap[a.suc]=suc;saveSucs()}
+  if(isAdmin()&&a.suc&&S.sucMap[a.suc]!==suc){S.sucMap[a.suc]=suc;saveSucs()}
   S.busy=true;render();
   try{
     if(p.kind==='ventas'){
@@ -1046,10 +1071,11 @@ async function confirmAuto(p){
       if(!g.rows.length)throw new Error('el informe no tiene filas de ventas');
       await saveDataset('ventas',{fileName:p.fileName,sucursales:g.sucursales,meses:g.meses,lineas:a.raw.length,desde:a.desde,hasta:a.hasta,fuente:'Autologica',sucOrigen:a.suc,provTot:a.provTot},g.rows,suc);
       if(suc!==S.P.sucursal)await useSuc(suc);saveParams();
+      logAct('Cargó ventas',`${p.fileName} · ${g.rows.length} códigos`,suc);
       toast(`Ventas guardadas: ${fN(g.rows.length)} códigos. Se dividen por ${S.P.dias} días hábiles.`);
     }else{
       await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc},a.rows,suc);
-      if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
+      if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();logAct('Cargó stock',`${p.fileName} · ${a.rows.length} piezas al ${fD(a.fecha)}`,suc);toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
     }
     S.pending=null;
   }catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
@@ -1079,13 +1105,13 @@ async function confirmMap(){
       S.finals={};saveDraft();toast(`Stock guardado: ${fN(map.size)} piezas.`);
     }else if(p.kind==='wings'){
       const w=aggWings(data.map(r=>({fecha:g(r,'fecha'),codPed:g(r,'codPed'),qPed:g(r,'qPed'),codFac:g(r,'codFac'),qFac:g(r,'qFac'),estado:g(r,'estado')})));
-      await saveDataset('wings',Object.assign({fileName:p.fileName},w.meta),w.rows);toast(`Wings guardado: ${fN(w.rows.length)} piezas con pedidos.`);
+      await saveDataset('wings',Object.assign({fileName:p.fileName},w.meta),w.rows);logAct('Cargó pedidos Wings',`${p.fileName} · ${w.rows.length} piezas`);toast(`Wings guardado: ${fN(w.rows.length)} piezas con pedidos.`);
     }else if(p.kind==='oq'){
       const rows=[];for(const r of data){const c=norm(g(r,'code'));const u=num(g(r,'unit'));if(c&&u>1)rows.push([c,u])}
-      await saveDataset('oq',{fileName:p.fileName},rows);toast(`Order units guardados: ${fN(rows.length)} piezas con unidad mayor a 1.`);
+      await saveDataset('oq',{fileName:p.fileName},rows);logAct('Cargó order units',`${p.fileName} · ${rows.length} piezas`,'Todas');toast(`Order units guardados: ${fN(rows.length)} piezas con unidad mayor a 1.`);
     }else if(p.kind==='ddp'){
       const rows=[];for(const r of data){const c=norm(g(r,'code'));if(c&&String(g(r,'flag')||'').trim().toUpperCase()==='D')rows.push([c])}
-      await saveDataset('ddp',{fileName:p.fileName},rows);toast(`DDP guardado: ${fN(rows.length)} piezas marcadas D.`);
+      await saveDataset('ddp',{fileName:p.fileName},rows);logAct('Cargó piezas DDP',`${p.fileName} · ${rows.length} piezas`,'Todas');toast(`DDP guardado: ${fN(rows.length)} piezas marcadas D.`);
     }
     S.pending=null;
   }catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
@@ -1095,8 +1121,9 @@ async function confirmMap(){
 /* ---------- Vista: Parámetros ---------- */
 function vParams(){
   const P=S.P;const fams=[...new Set([...(S.res.fams||[]),...(P.exclFam||[])])].sort();
+  const adm=isAdmin();
   const n=(id,l,h,step=1)=>`<label for="p_${id}">${l}<input type="number" id="p_${id}" data-p="${id}" step="${step}" min="0" value="${P[id]}"><small>${h}</small></label>`;
-  return `<section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
+  return `${adm?'':'<div class="note">Solo el administrador (repuestos@) puede cambiar los parámetros. Acá los podés consultar.</div>'}<fieldset ${adm?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px"><section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
     <button class="btn" data-act="resetParams">Volver a los valores del Excel</button></div>
     <div class="formula">MAD = venta del período ÷ días hábiles × 20<br>Std stock = ⌈ MAD × (ciclo + lead time + SS) ÷ 20 ⌉<br>Sugerido = ⌈ (Std stock − stock − pendientes) ÷ order unit ⌉ × order unit</div>
     <div class="params" style="margin-top:14px">
@@ -1110,16 +1137,16 @@ function vParams(){
       ${n('excesoPct','Exceso a partir de (% sobre el ideal)','Para marcar piezas con exceso')}
     </div></section>
   <div class="grid2">
-  <section class="panel"><h3>Sucursales</h3><p class="sub" style="margin-bottom:10px">Cada sucursal guarda sus propias ventas, stock, pedidos Wings, estándar y pedidos. Los parámetros, las piezas DDP y las order units son comunes.</p>
+  ${adm?`<section class="panel"><h3>Sucursales</h3><p class="sub" style="margin-bottom:10px">Cada sucursal guarda sus propias ventas, stock, pedidos Wings, estándar y pedidos. Los parámetros, las piezas DDP y las order units son comunes.</p>
     <div style="display:grid;gap:6px;margin-bottom:10px">${S.sucs.map(s=>`<div class="toolbar"><b style="flex:1">${esc(s)}</b><span class="faint">${Object.entries(S.sucMap).filter(([,v])=>v===s).map(([k])=>'Autologica: '+esc(k)).join(', ')}</span>${S.sucs.length>1?`<button class="btn sm" data-act="rmSuc" data-suc="${esc(s)}">Quitar de la lista</button>`:''}</div>`).join('')}</div>
-    <form id="addSuc" class="toolbar"><input type="text" id="newSuc" placeholder="Nombre de la sucursal"><button class="btn" type="submit">Agregar</button></form></section>
-  ${window.__LOCAL?`<section class="panel"><h3>Respaldo de datos</h3><p class="sub" style="margin-bottom:10px">Los datos se guardan en Supabase. El respaldo sirve para tener una copia aparte; Restaurar reemplaza todos los datos guardados.</p>
+    <form id="addSuc" class="toolbar"><input type="text" id="newSuc" placeholder="Nombre de la sucursal"><button class="btn" type="submit">Agregar</button></form></section>`:''}
+  ${window.__LOCAL&&adm?`<section class="panel"><h3>Respaldo de datos</h3><p class="sub" style="margin-bottom:10px">Los datos se guardan en Supabase. El respaldo sirve para tener una copia aparte; Restaurar reemplaza todos los datos guardados.</p>
     <div class="toolbar"><button class="btn" data-act="backup">Descargar respaldo</button><label class="btn file">Restaurar respaldo<input type="file" accept=".json" id="restoreFile"></label></div></section>`:''}
   <section class="panel"><h3>Qué descontar del faltante</h3><p class="sub" style="margin-bottom:10px">Pedidos a Ford que ya están en camino o trabados (requiere cargar Wings).</p>
     <div class="checks" style="flex-direction:column">${[['subBO','BO físico (estado 40): Ford no tiene la pieza, no se vuelve a pedir'],['subProc','En proceso (10, 20, 25, 43, 44, 58)'],['subOD','OD diferido (estado 50): por defecto se sigue pidiendo']].map(([k,t])=>`<label><input type="checkbox" data-pc="${k}"${P[k]?' checked':''}> ${t}</label>`).join('')}</div></section>
   <section class="panel"><h3>Rubros excluidos de los candidatos</h3><p class="sub" style="margin-bottom:10px">El rubro se asigna por la descripción de la pieza. Los rubros marcados no se sugieren para el estándar.</p>
     <div class="checks">${fams.length?fams.map(f=>`<label><input type="checkbox" data-fam="${esc(f)}"${(P.exclFam||[]).includes(f)?' checked':''}> ${esc(f)}</label>`).join(''):'<span class="faint">Cargá ventas con familia para ver la lista.</span>'}</div></section>
-  </div>`;
+  </div></fieldset>`;
 }
 
 /* ---------- Exportaciones ---------- */
@@ -1162,8 +1189,8 @@ async function saveSug(name){
   if(!L.length){toast('No hay líneas para guardar.');return}
   const lines=L.map(l=>[l.code,l.desc,l.st,l.stdQty,l.sug,finalOf(l),l.cost,l.ou,l.bo,l.od,l.proc,r2(l.mad)]);
   const K=S.K.ped;
-  try{await db.collection('sugeridos').add({nombre:name||'Pedido',fecha:new Date().toISOString(),sucursal:stdKey(),estado:'Borrador',stockFecha:S.D.stock?S.D.stock.meta.fecha:null,params:S.P,resumen:{lineas:K.lineas,u:K.u,monto:r2(K.$)},lines:JSON.stringify(lines)});
-    S.ui.saveOpen=false;toast('Sugerido guardado en el historial.');render()}catch(e){toast(e.code==='quota_exceeded'?'Se llenó el espacio: eliminá sugeridos viejos del historial.':'No se pudo guardar: '+(e.message||e.code))}
+  try{await db.collection('sugeridos').add({nombre:name||'Pedido',fecha:new Date().toISOString(),sucursal:stdKey(),estado:'Borrador',usuario:ME()?ME().email:'',stockFecha:S.D.stock?S.D.stock.meta.fecha:null,params:S.P,resumen:{lineas:K.lineas,u:K.u,monto:r2(K.$)},lines:JSON.stringify(lines)});
+    S.ui.saveOpen=false;logAct('Guardó pedido',`${name||'Pedido'} · ${K.lineas} líneas · ${f$(K.$)}`);toast('Sugerido guardado en el historial.');render()}catch(e){toast(e.code==='quota_exceeded'?'Se llenó el espacio: eliminá sugeridos viejos del historial.':'No se pudo guardar: '+(e.message||e.code))}
 }
 
 /* ---------- Eventos ---------- */
@@ -1174,14 +1201,15 @@ document.addEventListener('click',e=>{
   if(t.dataset.view){u.view=t.dataset.view;u.sort=u.view==='pedir'?'$':'code';u.dir=u.view==='pedir'?-1:1;render();return}
   if(t.dataset.sort){const k=t.dataset.sort;if(u.sort===k)u.dir*=-1;else{u.sort=k;u.dir=['code','desc'].includes(k)?1:-1}render();return}
   if(t.dataset.open){u.openSaved=u.openSaved===t.dataset.open?null:t.dataset.open;u.confirmDel=null;render();return}
-  if(t.dataset.addstd){const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),t.dataset.addstd])];saveStd();recompute();render();return}
-  if(t.dataset.rmstd){const k=stdKey();S.stdBy[k]=(S.stdBy[k]||[]).filter(c=>c!==t.dataset.rmstd);saveStd();recompute();render();toast(t.dataset.rmstd+' quitada del estándar');return}
+  if(t.dataset.addstd){logAct('Agregó al estándar',t.dataset.addstd);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),t.dataset.addstd])];saveStd();recompute();render();return}
+  if(t.dataset.rmstd){logAct('Quitó del estándar',t.dataset.rmstd);const k=stdKey();S.stdBy[k]=(S.stdBy[k]||[]).filter(c=>c!==t.dataset.rmstd);saveStd();recompute();render();toast(t.dataset.rmstd+' quitada del estándar');return}
   const a=t.dataset.act;
   if(a==='openSave'){u.saveOpen=true;render();const i=$('#saveName');i&&i.select();}
   else if(a==='closeSave'){u.saveOpen=false;render()}
   else if(a==='resetFin'){S.finals={};saveDraft();recompute();render()}
   else if(a==='exportSug')exportSug();
   else if(a==='exportCsv')exportCsv();
+  else if(a==='logout'){window.__logout&&window.__logout()}
   else if(a==='backup'){dl&&dl.save({filename:`Respaldo Estandar Stock ${fDate(new Date())}.json`,data:window.__backup()}).then(()=>toast('Respaldo descargado.'))}
   else if(a==='exportSavedCsv')exportSavedCsv();
   else if(a==='exportStd')exportXlsx(`Estandar stock ${stdKey()} ${stamp()}.xlsx`,[{name:'Estandar',rows:stdSheet()}]);
@@ -1190,10 +1218,10 @@ document.addEventListener('click',e=>{
   else if(a==='askDel'){u.confirmDel=u.openSaved;render()}
   else if(a==='noDel'){u.confirmDel=null;render()}
   else if(a==='delSaved'){const id=u.confirmDel;u.confirmDel=null;u.openSaved=null;db&&db.doc('sugeridos/'+id).delete().then(()=>toast('Pedido eliminado.')).catch(e=>toast('No se pudo eliminar: '+(e.message||e.code)))}
-  else if(a==='addAllCand'){const k=stdKey();const add=S.res.lines.filter(l=>l.cand).map(l=>l.code);S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),...add])];saveStd();recompute();render();toast(`${add.length} piezas agregadas al estándar.`)}
+  else if(a==='addAllCand'){const k=stdKey();const add=S.res.lines.filter(l=>l.cand).map(l=>l.code);logAct('Armó estándar con la regla',`${add.length} piezas`);S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),...add])];saveStd();recompute();render();toast(`${add.length} piezas agregadas al estándar.`)}
   else if(a==='cancelMap'){S.pending=null;render()}
   else if(a==='wingsBase'){(async()=>{try{const suc=S.P.sucursal;await deleteDataset(dsName('wings',suc));if(S.cache[suc])S.cache[suc].wings=null;S.D.wings=wingsFor(suc,S.cache[suc]||{});recompute();render();toast(S.D.wings?'Se usan otra vez los pedidos Wings del Excel base.':'Pedidos Wings borrados para '+suc+'.')}catch(e){toast('No se pudo: '+(e.message||e.code))}})()}
-  else if(a==='copyStd'){const from=t.dataset.from;S.stdBy[stdKey()]=[...(S.stdBy[from]||[])];saveStd();recompute();render();toast(`Se copiaron ${S.stdBy[stdKey()].length} piezas del estándar de ${from}.`)}
+  else if(a==='copyStd'){const from=t.dataset.from;logAct('Copió estándar',`desde ${from}`);S.stdBy[stdKey()]=[...(S.stdBy[from]||[])];saveStd();recompute();render();toast(`Se copiaron ${S.stdBy[stdKey()].length} piezas del estándar de ${from}.`)}
   else if(a==='rmSuc'){const s=t.dataset.suc;if(S.sucs.length<2)return;S.sucs=S.sucs.filter(x=>x!==s);saveSucs();if(S.P.sucursal===s)switchSuc(S.sucs[0]);else render()}
   else if(a==='confirmMap')confirmMap();
   else if(a==='resetParams'){S.P=Object.assign({},DEFAULT_PARAMS,{sucursal:S.P.sucursal});saveParams();recompute();render()}
@@ -1212,6 +1240,7 @@ document.addEventListener('change',e=>{
   if(t.dataset.file){const f=t.files[0];t.value='';if(f)readFile(t.dataset.file,f).catch(err=>toast('No se pudo leer el archivo: '+err.message));return}
   if(t.id==='sucSel'){if(t.value==='__add'){t.value=S.P.sucursal;S.tab='params';render();setTimeout(()=>{const i=$('#newSuc');i&&(i.scrollIntoView({block:'center'}),i.focus())},50);return}switchSuc(t.value);return}
   if(t.id==='origSel'){S.P.origen=t.value;saveParams();recompute();render();toast(t.value?`Mostrando solo origen ${t.value==='N'?'N · Original':'P · Nacional'}`:'Mostrando todos los orígenes');return}
+  if(t.id==='actSuc'||t.id==='actUser'){S.ui[t.id]=t.value;render();return}
   if(t.id==='fam'){u.fam=t.value;render();return}
   if(t.id==='stdEst'){u.stdEst=t.value;render();return}
   if(t.id==='mapSheet'){setSheet(t.value);return}
@@ -1220,14 +1249,14 @@ document.addEventListener('change',e=>{
   if(t.dataset.pc){S.P[t.dataset.pc]=t.checked;saveParams();recompute();return}
   if(t.dataset.fam){const s=new Set(S.P.exclFam||[]);t.checked?s.add(t.dataset.fam):s.delete(t.dataset.fam);S.P.exclFam=[...s];saveParams();recompute();return}
   if(t.dataset.p){render();return}
-  if(t.id==='estSel'){db&&db.doc('sugeridos/'+t.dataset.id).update({estado:t.value}).catch(e=>toast('No se pudo actualizar: '+(e.message||e.code)));return}
+  if(t.id==='estSel'){const sv=S.saved.find(x=>x.id===t.dataset.id);logAct('Cambió estado de pedido',`${sv?sv.nombre:''} → ${t.value}`,sv&&sv.sucursal);db&&db.doc('sugeridos/'+t.dataset.id).update({estado:t.value}).catch(e=>toast('No se pudo actualizar: '+(e.message||e.code)));return}
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();
   if(e.target.id==='saveForm'){saveSug($('#saveName').value.trim())}
   if(e.target.dataset&&e.target.dataset.man){saveManual(e.target.dataset.man,e.target);return}
   if(e.target.id==='addSuc'){const n=$('#newSuc').value.trim();if(!n)return;if(S.sucs.some(s=>slug(s)===slug(n))){toast('Esa sucursal ya existe.');return}S.sucs.push(n);saveSucs();switchSuc(n);toast(n+' agregada. Cargá sus ventas y stock en Cargar datos.')}
-  if(e.target.id==='addStd'){const c=norm($('#addCode').value);if(!c)return;const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),c])];saveStd();recompute();render();toast(c+' agregada al estándar'+(S.byCode.get(c)&&S.byCode.get(c).enStock?'':' (no figura en stock ni ventas)'))}
+  if(e.target.id==='addStd'){const c=norm($('#addCode').value);if(!c)return;logAct('Agregó al estándar',c);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),c])];saveStd();recompute();render();toast(c+' agregada al estándar'+(S.byCode.get(c)&&S.byCode.get(c).enStock?'':' (no figura en stock ni ventas)'))}
 });
 boot();
 </script>
