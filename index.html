@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*,::before,::after{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Estándar Stock Karam</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: barra superior fija con estado de datos, pestañas de trabajo, tablas densas tipo planilla */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --surface2:#f6f8fa; --ink:#15202c; --muted:#5a6878; --faint:#8a96a4; --line:#d9dee5;
+  --accent:#1c4d9c; --accent-ink:#ffffff; --accent-soft:#e3ebf8;
+  --ok:#2c7a4b; --ok-soft:#e2f2e8; --warn:#9a6212; --warn-soft:#fbefd9; --crit:#b3261e; --crit-soft:#fbe4e2; --info:#5b4d9a; --info-soft:#ebe8f7;
+  --bar:#3d6fbf;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --surface:#161d25; --surface2:#1b232d; --ink:#e4e9ef; --muted:#9aa7b6; --faint:#6d7a89; --line:#2a3542;
+  --accent:#7ea6ee; --accent-ink:#0f141a; --accent-soft:#1d2b42;
+  --ok:#6cc792; --ok-soft:#173226; --warn:#e3a94f; --warn-soft:#3a2c14; --crit:#f08077; --crit-soft:#3d1c1a; --info:#aa9ef0; --info-soft:#27234a;
+  --bar:#6f98e0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --surface:#161d25; --surface2:#1b232d; --ink:#e4e9ef; --muted:#9aa7b6; --faint:#6d7a89; --line:#2a3542;
+  --accent:#7ea6ee; --accent-ink:#0f141a; --accent-soft:#1d2b42;
+  --ok:#6cc792; --ok-soft:#173226; --warn:#e3a94f; --warn-soft:#3a2c14; --crit:#f08077; --crit-soft:#3d1c1a; --info:#aa9ef0; --info-soft:#27234a;
+  --bar:#6f98e0; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1360px;margin:0 auto;padding-inline:16px;padding-block:0 48px}
+header.top .wrap{padding-bottom:0}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.toprow{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;padding-block:12px}
+.brand{display:flex;flex-direction:column;min-width:0}
+.brand h1{font-family:var(--f-display);font-size:22px;letter-spacing:.01em;margin:0;line-height:1.1}
+.brand span{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+.chip{display:inline-flex;max-width:100%;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);background:var(--surface2);white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}
+.suc{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.tabs button{appearance:none;border:0;background:none;font:600 13px var(--f-body);color:var(--muted);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+nav.tabs button:hover{color:var(--ink)}
+main{padding-top:20px;display:grid;gap:18px}
+h2{font-family:var(--f-display);font-size:19px;margin:0;text-wrap:balance}
+h3{font-size:14px;margin:0;font-weight:600}
+.sub{color:var(--muted);font-size:13px;margin:4px 0 0;max-width:80ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.panel-h{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tile{background:var(--surface);padding:12px 14px;min-width:0}
+.tile .l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.tile .v{font-family:var(--f-display);font-size:22px;font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .n{font-size:12px;color:var(--faint)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type=text],input[type=number],input[type=search],input[type=date],select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 9px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{appearance:none;font:600 13px var(--f-body);border-radius:7px;padding:7px 13px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);white-space:nowrap}
+.btn:hover{background:var(--surface2)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--crit);border-color:var(--crit)}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{appearance:none;border:0;background:var(--surface);font:500 12.5px var(--f-body);color:var(--muted);padding:6px 11px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:8px;max-height:70vh}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+th,td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--surface2);font-weight:600;color:var(--muted);font-size:11.5px;z-index:1;cursor:default}
+th.s{cursor:pointer}th.s:hover{color:var(--ink)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.code{font-family:var(--f-mono);font-size:12px}
+td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
+tr:hover td{background:var(--surface2)}
+tfoot td{position:sticky;bottom:0;background:var(--surface2);font-weight:600}
+td.hl{background:var(--accent-soft)!important;font-weight:600}
+td input.fin{width:66px;text-align:right;padding:3px 6px;font-variant-numeric:tabular-nums}
+td input.fin.chg{border-color:var(--accent);background:var(--accent-soft)}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:600}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-ok{background:var(--ok-soft);color:var(--ok)}.p-bajo{background:var(--warn-soft);color:var(--warn)}.p-quiebre{background:var(--crit-soft);color:var(--crit)}.p-exceso{background:var(--info-soft);color:var(--info)}.p-sin{background:var(--surface2);color:var(--muted)}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;color:var(--muted);margin-right:3px}
+.tag.w{border-color:var(--warn);color:var(--warn)}.tag.c{border-color:var(--crit);color:var(--crit)}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.note{font-size:12.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.note.warn{border-color:var(--warn);background:var(--warn-soft);color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
+.card .st{font-size:12.5px;color:var(--muted)}
+.card label.file{justify-self:start}
+.req{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);font-weight:700}
+.opt{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:700}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.map label{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+.bars{display:flex;height:14px;gap:2px;border-radius:4px;overflow:hidden}
+.bars span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
+.legend b{color:var(--ink);font-variant-numeric:tabular-nums}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto}
+.chart text{fill:var(--muted);font:11px var(--f-body)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-110%)}
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.params label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.params label small{color:var(--faint)}
+.formula{font-family:var(--f-mono);font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto}
+.checks{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px}
+.checks label{display:inline-flex;gap:6px;align-items:center}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:13px;z-index:50;max-width:calc(100% - 32px)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.confirm{display:inline-flex;gap:6px;align-items:center;font-size:12.5px}
+.list-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.list-row:hover{background:var(--surface2)}
+.list-row.sel{background:var(--accent-soft)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;font-variant-numeric:tabular-nums}
+@media (max-width:640px){.tile .v{font-size:19px}.brand h1{font-size:19px}header.top{position:static}.chip{white-space:normal}.toprow{padding-block:10px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head><body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="toprow">
+      <div class="brand"><h1>Estándar Stock</h1><span>Pedido sugerido de repuestos · Karam</span></div>
+      <div class="chips" id="chips"></div>
+      <div class="suc"><label for="origSel">Origen</label><select id="origSel"><option value="N">N · Original</option><option value="P">P · Nacional</option><option value="">Todos</option></select><label for="sucSel">Sucursal</label><select id="sucSel"></select></div>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+  </div>
+</header>
+<div class="wrap"><main id="main"><div class="empty">Cargando datos guardados…</div></main></div>
+<div id="toast" class="toast" hidden></div>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="supabase-shim.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ===== Núcleo de cálculo (réplica de la lógica del Excel PEDIDO SUGERIDO) ===== */
+const norm = s => String(s == null ? '' : s).replace(/\s+/g, '').toUpperCase();
+const num = v => { if (v == null || v === '') return 0; if (typeof v === 'number') return v; const t = String(v).trim().replace(/\s/g, ''); const n = Number(/,\d{1,2}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')); return isFinite(n) ? n : 0; };
+const OIL_DEFAULT = ['Lubricantes y químicos'];
+/* Rubro por descripción (el informe de Autologica no trae la familia de la pieza) */
+const RUBROS = [
+  ['Lubricantes y químicos', /^(ACEITE|LUBRICANTE|LUBRIC|LIQUIDO|LIQ\.?|REFRIGERANTE|ANTICONGELANTE|GRASA|ADITIVO|FLUIDO|SELLADOR|SILICONA|LIMPIADOR|DESENGRASANTE|SHAMPOO|CERA|ABRILLANTADOR|DESCARBONIZANTE|ELAION)\b/, /^(RXO\/|XY\/|R\/AURO|R\/YPF|ESF\/)/],
+  ['Filtros', /^(FILTRO|FILTROS|ELEMENTO\s+(FILTR|F\/|DE\s+FILTR)|ELEM\.?\s*FILT|CARTUCHO)/],
+  ['Frenos', /(FRENO|PASTILLA|ZAPATA|CALIPER|MORDAZA|CAMPANA)/],
+  ['Correas y distribución', /^(CORREA|TENSOR|POLEA|KIT\s+DISTRIB|KIT\s+CORREA|JGO\.?\s+DISTRIB)/],
+  ['Encendido', /^(BUJIA|BUJIAS|BOBINA|CABLE\s+(DE\s+)?BUJ)/],
+  ['Baterías', /^(BATERIA)/],
+  ['Escobillas', /^(ESCOBILLA|PLUMA|BRAZO\s+LIMPIA)/],
+  ['Suspensión y dirección', /^(AMORT|BIELETA|ROTULA|BUJE|BRAZO|EXTREMO|PARRILLA|CAZOLETA|ESPIRAL|RESORTE|BARRA|TOPE|FUELLE|CREMALLERA|TERMINAL|RODAMIENTO|RULEMAN|MAZA|CUBO)/],
+  ['Iluminación', /^(LAMPARA|LAMP\.?|FARO|OPTICA|BULBO|LUZ|FAROL|FOCO)/],
+  ['Refrigeración', /^(RADIADOR|MANGUERA|MANG\.?|TERMOSTATO|ELECTROVENTILADOR|VENTILADOR|DEPOSITO|TAPA\s+DEP)|BOMBA\s+(DE\s+)?AGUA/],
+  ['Embrague y transmisión', /(EMBRAGUE|CRAPODINA|PLATO|SEMIEJE|HOMOCINETICA|CARDAN|CAJA)/],
+  ['Carrocería y cristales', /^(PARAGOLPE|ESPEJO|MOLDURA|MOLD\.?|GUARDABARRO|PANEL|GRILLA|CRISTAL|PARABRISAS|VIDRIO|LUNETA|EMBLEMA|MANIJA|BURLETE|CERRADURA|CAPOT|PUERTA|PORTON|GUARDAPOLVO|REJILLA|DEFLECTOR|ALERON|ZOCALO)/],
+  ['Juntas y retenes', /^(JUNTA|JTA\.?|RETEN|SELLO|ANILLO|O-RING|JGO\.?\s*(DE\s+)?JUNTAS?)/],
+  ['Eléctrico', /^(SENSOR|INTERRUPTOR|INTERRUP|FUSIBLE|RELAY|RELE|MODULO|CABLE|CABLEADO|CONECTOR|FICHA|ACTUADOR|SOLENOIDE|ALTERNADOR|ARRANCADOR|MOTOR\s+(DE\s+)?ARRANQUE|EMISOR|BOCINA|LLAVE)/],
+  ['Motor', /^(SOPORTE|SOP\.?|BOMBA|VALVULA|VALV\.?|INYECTOR|TURBO|PISTON|AROS|CIGUE|ARBOL|BALANCIN|BOTADOR|CULATA|CARTER|MULTIPLE|ENGRANAJE|CADENA|CILINDRO|BIELA|COJINETE|CASQUETE|TAPA\s+(DE\s+)?(CILINDRO|VALV|DISTRIB|MOTOR|BALANC))/],
+  ['Tornillería', /^(TORNILLO|TUERCA|ARANDELA|BULON|PERNO|CLIP|ESPARRAGO|ABRAZADERA|TRABA|REMACHE|GRAMPA|PASADOR|CHAVETA|TAPON)/],
+  ['Accesorios y neumáticos', /^(KIT\s+SEGURIDAD|CUBRE|ALFOMBRA|CUBIERTA|NEUMATICO|LLANTA|PORTAEQUIPAJE|BARRA\s+PORTA|CAPOTA|TAPA\s+CAJA|FUNDA|MATAFUEGO|BALIZA)/]
+];
+function rubroDe(code, desc) {
+  const d = String(desc || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(), c = String(code || '').toUpperCase();
+  for (const [n, re, cre] of RUBROS) { if ((cre && cre.test(c)) || re.test(d)) return n; }
+  return 'Otros';
+}
+const DEFAULT_PARAMS = {
+  oc: 5, ltNormal: 4, ltDDP: 15, ss: 20, dias: 120, sucursal: 'La Rioja',
+  minStd: 5, exclFam: OIL_DEFAULT.slice(), origen: 'N',
+  subBO: true, subOD: false, subProc: true, tope: 10, excesoPct: 50
+};
+
+function mesKey(mes, fecha) {
+  const d = fecha instanceof Date ? fecha : (mes instanceof Date ? mes : null);
+  if (d && !isNaN(d)) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  if (mes != null && mes !== '') { const m = String(mes).match(/(\d{4})[-\/](\d{1,2})/); if (m) return m[1] + '-' + m[2].padStart(2, '0'); return String(mes); }
+  if (fecha != null && fecha !== '') { const m = String(fecha).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + m[2].padStart(2, '0'); } }
+  return '(sin mes)';
+}
+
+/* Ventas: filas crudas -> agregadas [code, desc, fam, sucIdx, mesIdx, qty] */
+function aggVentas(raw) {
+  const sucs = [], meses = [], agg = new Map(), info = new Map();
+  for (const r of raw) {
+    const code = norm(r.code); if (!code) continue;
+    const q = num(r.qty); if (!q) continue;
+    const suc = (r.suc == null || r.suc === '') ? '(sin sucursal)' : String(r.suc).trim();
+    const mes = mesKey(r.mes, r.fecha);
+    let si = sucs.indexOf(suc); if (si < 0) { sucs.push(suc); si = sucs.length - 1; }
+    let mi = meses.indexOf(mes); if (mi < 0) { meses.push(mes); mi = meses.length - 1; }
+    let inf = info.get(code);
+    if (!inf) { inf = [String(r.desc || '').trim(), '', {}, r.prov ? String(r.prov).trim() : '', r.orig ? String(r.orig).trim().toUpperCase() : '']; info.set(code, inf); }
+    if (!inf[0] && r.desc) inf[0] = String(r.desc).trim();
+    const fm = String(r.fam || '').trim(); if (fm) inf[2][fm] = (inf[2][fm] || 0) + 1;
+    const k = code + '|' + si + '|' + mi; agg.set(k, (agg.get(k) || 0) + q);
+  }
+  const sorted = meses.slice().sort();
+  const remap = meses.map(x => sorted.indexOf(x));
+  for (const inf of info.values()) { let b = '', n = 0; for (const f in inf[2]) if (inf[2][f] > n) { n = inf[2][f]; b = f; } inf[1] = b; }
+  const rows = [];
+  for (const [k, q] of agg) { const [c, s, m] = k.split('|'); const inf = info.get(c); rows.push([c, inf[0], inf[1], +s, remap[+m], Math.round(q * 1e4) / 1e4, inf[3], inf[4]]); }
+  return { rows, sucursales: sucs, meses: sorted };
+}
+
+/* Informes de Autologica (exportación .xls de reportes) */
+function detectAutologica(aoa) {
+  const t = String((aoa[0] || [])[0] || '').trim().toLowerCase();
+  const src = aoa.slice(0, 5).map(r => (r || []).join(' ')).join(' ');
+  if (!/autologica/i.test(src)) return null;
+  if (t.startsWith('ventas de repuestos')) return 'ventas';
+  if (t.startsWith('stock a costo')) return 'stock';
+  return null;
+}
+const dmy = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
+function parseAutologicaVentas(aoa) {
+  let prov = '', suc = '', desde = null, hasta = null; const raw = []; const provTot = {};
+  for (const r of aoa) {
+    if (!r) continue;
+    const a = r[0], b = r[1];
+    if (a === 'Filtrado por:') { const m = String(r[1] || '').match(/entre\s+(\S+)\s+y\s+(\S+?);/); if (m) { desde = dmy(m[1]); hasta = dmy(m[2]); } continue; }
+    if (b === 'Sucursal:') { suc = String(r[2] || '').replace(/^\d+\s*/, '').trim(); continue; }
+    if (b === 'Proveedor:') { prov = String(r[2] || '').replace(/^\d+\s*/, '').trim(); continue; }
+    if (a != null && a !== '' && typeof r[7] === 'number' && !String(a).startsWith('(')) {
+      raw.push({ code: a, desc: r[2], qty: r[7], prov, orig: r[1] }); provTot[prov] = (provTot[prov] || 0) + r[7];
+    }
+  }
+  let meses = 6; if (desde && hasta) { const d1 = new Date(desde), d2 = new Date(hasta); meses = Math.max(1, Math.round((d2 - d1) / (864e5 * 30.44))); }
+  return { raw, suc, desde, hasta, meses, provTot };
+}
+function parseAutologicaStock(aoa) {
+  let suc = '', fecha = null; const rows = new Map();
+  for (const r of aoa) {
+    if (!r) continue;
+    if (r[2] === 'Emitido:' && !fecha) fecha = dmy(r[3]);
+    if (r[1] === 'Sucursal:') { suc = String(r[3] || '').trim(); continue; }
+    const a = r[0];
+    if (a != null && a !== '' && a !== '*' && typeof r[6] === 'number' && (typeof r[7] === 'number' || r[7] == null)) {
+      const code = norm(a); if (!code) continue;
+      const val = typeof r[8] === 'number' ? r[8] : (typeof r[7] === 'number' ? r[7] * r[6] : null);
+      const e = rows.get(code);
+      if (e) { e[2] += r[6]; if (val != null) e[5] = (e[5] || 0) + val; }
+      else rows.set(code, [code, String(r[2] || '').trim(), r[6], null, String(r[5] || '').trim(), val, String(r[1] || '').trim().toUpperCase()]);
+    }
+  }
+  for (const e of rows.values()) { e[3] = e[5] != null && e[2] > 0 ? Math.round(e[5] / e[2] * 100) / 100 : null; e[5] = e[6]; e.length = 6; }
+  return { rows: [...rows.values()], suc, fecha };
+}
+
+/* Descarga de pedidos de Wings (hoja con encabezados Fecha pedido, Pieza pedida, # Pedida, ...) */
+function detectWings(aoa) {
+  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+    const h = (aoa[i] || []).map(x => String(x == null ? '' : x).trim().toLowerCase());
+    if (h.includes('pieza pedida') && h.includes('estado') && h.some(x => x.startsWith('# pedida'))) return i;
+  }
+  return -1;
+}
+function parseWings(aoa, hr) {
+  const h = aoa[hr].map(x => String(x == null ? '' : x).trim().toLowerCase());
+  const col = (...names) => { for (const n of names) { const i = h.indexOf(n); if (i >= 0) return i; } return -1; };
+  const cF = col('fecha pedido', 'fecha'), cN = col('n° pedido', 'nº pedido', 'n pedido'), cI = col('item'), cE = col('cod. empresa'),
+    cP = col('pieza pedida'), cQ = col('# pedida'), cPF = col('pieza facturada'), cQF = col('# facturada'), cS = col('estado'), cT = col('tipo pedido');
+  const raw = [], emp = {}, tipos = {}, est = {};
+  for (const r of aoa.slice(hr + 1)) {
+    if (!r || r[cP] == null) continue;
+    const e = cE >= 0 ? String(r[cE] || '').trim() : ''; emp[e] = (emp[e] || 0) + 1;
+    const s = String(r[cS] || '').trim(); est[s] = (est[s] || 0) + 1;
+    if (cT >= 0) { const t = String(r[cT] || '').trim(); tipos[t] = (tipos[t] || 0) + 1; }
+    raw.push({ fecha: r[cF], codPed: r[cP], qPed: r[cQ], codFac: cPF >= 0 ? r[cPF] : null, qFac: cQF >= 0 ? r[cQF] : r[cQ], estado: s,
+      key: cN >= 0 ? String(r[cN]) + '|' + (cI >= 0 ? String(r[cI]) : '') : null });
+  }
+  return { raw, emp, tipos, est };
+}
+
+/* Wings: filas crudas {fecha, codPed, qPed, codFac, qFac, estado} -> [code, bo, od, proc, cupo] */
+const PROC_STATES = ['10', '20', '25', '43', '44', '58', 'CONFIRMED'];
+function aggWings(raw) {
+  const m = new Map(); let maxD = null, minD = null;
+  const get = c => { let o = m.get(c); if (!o) { o = { bo: 0, od: 0, proc: 0, ped4: 0 }; m.set(c, o); } return o; };
+  const dates = raw.map(r => toDate(r.fecha));
+  for (const d of dates) if (d) { if (!maxD || d > maxD) maxD = d; if (!minD || d < minD) minD = d; }
+  let from = null, to = null, cupoMeses = [];
+  if (maxD) {
+    to = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+    from = new Date(maxD.getFullYear(), maxD.getMonth() - 4, 1);
+    for (let i = 4; i >= 1; i--) { const d = new Date(maxD.getFullYear(), maxD.getMonth() - i, 1); cupoMeses.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+  }
+  const seen = new Set();
+  raw.forEach((r, i) => {
+    const est = String(r.estado || '').trim(); const code0 = est.split(/\s|-/)[0].toUpperCase();
+    const cf = norm(r.codFac) || norm(r.codPed); const cp = norm(r.codPed) || cf;
+    if (cf) {
+      const qf = num(r.qFac);
+      if (code0 === '40') get(cf).bo += qf;
+      else if (code0 === '50') get(cf).od += qf;
+      else if (PROC_STATES.includes(code0)) get(cf).proc += qf;
+    }
+    const d = dates[i];
+    if (cp && d && from && d >= from && d < to && code0 !== '95') {
+      // Wings repite la línea por cada caja facturada: la cantidad pedida se cuenta una vez por pedido + ítem
+      if (r.key) { if (seen.has(r.key)) return; seen.add(r.key); }
+      get(cp).ped4 += num(r.qPed);
+    }
+  });
+  const rows = [];
+  for (const [c, o] of m) if (o.bo || o.od || o.proc || o.ped4) rows.push([c, o.bo, o.od, o.proc, Math.round(o.ped4 / 4 * 100) / 100]);
+  const f = d => d ? d.toISOString().slice(0, 10) : null;
+  return { rows, meta: { desde: f(minD), hasta: f(maxD), cupoMeses } };
+}
+function toDate(v) {
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5) + 12 * 36e5);
+  if (typeof v === 'string') { let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return new Date(+(m[3].length === 2 ? '20' + m[3] : m[3]), +m[2] - 1, +m[1]); }
+  return null;
+}
+
+const ceil0 = x => Math.ceil(x - 1e-9);
+
+/* Cálculo principal. D = {ventas, stock, wings, oq, ddp}, std = Set, P = params */
+function compute(D, std, P) {
+  const vent = new Map(), fams = new Set();
+  const vmeta = D.ventas ? D.ventas.meta : { sucursales: [], meses: [] };
+  const sucIdx = P.sucursal ? (vmeta.sucursales || []).indexOf(P.sucursal) : -1;
+  const meses = (vmeta.meses || []);
+  const monthTotals = meses.map(() => 0);
+  if (D.ventas) for (const r of D.ventas.rows) {
+    if (sucIdx >= 0 && r[3] !== sucIdx) continue;
+    let v = vent.get(r[0]); if (!v) { v = { desc: r[1], fam: r[2], q: 0, m: {}, prov: r[6] || '', orig: r[7] || '' }; vent.set(r[0], v); }
+    if (!v.fam && r[2]) v.fam = r[2]; if (!v.desc && r[1]) v.desc = r[1];
+    v.q += r[5]; v.m[r[4]] = (v.m[r[4]] || 0) + r[5]; monthTotals[r[4]] += r[5];
+  }
+
+  const stock = new Map(); if (D.stock) for (const r of D.stock.rows) { const o = stock.get(r[0]); if (o) o.q += num(r[2]); else stock.set(r[0], { desc: r[1], q: num(r[2]), cost: r[3] == null || r[3] === '' ? null : num(r[3]), act: r[4] || '', orig: r[5] || '' }); }
+  const oq = new Map(); if (D.oq) for (const r of D.oq.rows) oq.set(r[0], num(r[1]) || 1);
+  const ddp = new Set(); if (D.ddp) for (const r of D.ddp.rows) ddp.add(r[0]);
+  const wg = new Map(); if (D.wings) for (const r of D.wings.rows) wg.set(r[0], r);
+  const codes = new Set([...stock.keys(), ...std, ...vent.keys()]);
+  const excl = new Set(P.exclFam || []);
+  const lines = [];
+  const cyc = (P.oc + P.ss);
+  for (const code of codes) {
+    const s = stock.get(code), v = vent.get(code), w = wg.get(code);
+    const orig = (s && s.orig) || (v && v.orig) || '';
+    if (P.origen && orig && orig !== P.origen) continue;
+    if (P.origen && !orig && !std.has(code)) continue;
+    const q6 = v ? v.q : 0;
+    const mad = P.dias > 0 ? Math.max(0, q6) / P.dias * 20 : 0;
+    const isD = ddp.has(code);
+    const lt = isD ? P.ltDDP : P.ltNormal;
+    const stdQty = ceil0(mad * (cyc + lt) / 20);
+    const st = s ? s.q : 0;
+    const inStd = std.has(code);
+    const dif = stdQty - st;
+    const psBruto = inStd && st >= 0 && dif > 0 ? dif : 0;
+    const bo = w ? w[1] : 0, od = w ? w[2] : 0, proc = w ? w[3] : 0, cuota = w ? w[4] : 0;
+    const pend = (P.subBO ? bo : 0) + (P.subOD ? od : 0) + (P.subProc ? proc : 0);
+    const neto = Math.max(0, psBruto - pend);
+    const ou = oq.get(code) || 1;
+    let sug = neto > 0 ? ceil0(neto / ou) * ou : 0, topado = false;
+    if (P.tope > 0 && sug > P.tope) { sug = Math.max(ou, Math.floor(P.tope / ou) * ou); topado = true; }
+    const cupoOD = Math.max(10, Math.round(cuota * 1.3));
+    const cost = s ? s.cost : null;
+    let estado = '';
+    if (inStd) {
+      if (stdQty === 0) estado = 'sin';
+      else if (st <= 0) estado = 'quiebre';
+      else if (st < stdQty) estado = 'bajo';
+      else if (st > stdQty * (1 + (P.excesoPct || 50) / 100)) estado = 'exceso';
+      else estado = 'ok';
+    }
+    const fam = rubroDe(code, (s && s.desc) || (v && v.desc) || ''); fams.add(fam);
+    const prov = v ? v.prov : '';
+    lines.push({
+      code, desc: (s && s.desc) || (v && v.desc) || '', fam, q6, m: v ? v.m : {}, mad, ddp: isD, lt, ou, stdQty, st, cost,
+      inStd, dif, psBruto, bo, od, proc, cuota, cupoOD, pend, sug, topado, odFlag: sug > cupoOD, estado,
+      cand: !inStd && q6 > P.minStd && !excl.has(fam) && (!prov || /FORD/i.test(prov)), enStock: !!s, prov, act: s ? s.act : '', orig
+    });
+  }
+  return { lines, fams: [...fams].sort(), meses, monthTotals };
+}
+
+/* Indicadores del informe */
+function kpis(res, finals) {
+  const L = res.lines; const K = {
+    stock$: 0, stockU: 0, stockP: 0, sinCosto: 0, dem$: 0,
+    std: { p: 0, ideal$: 0, idealU: 0, act$: 0, actU: 0, dem$: 0, quiebre: 0, bajo: 0, ok: 0, exceso: 0, sin: 0, gap$: 0 },
+    grupos: { std: z(), venta: z(), sinventa: z() },
+    ventaU: 0, ventaItems: 0, ventaSinStockU: 0, ventaSinStockItems: 0,
+    ped: { lineas: 0, u: 0, $: 0 }
+  };
+  function z() { return { $: 0, p: 0, u: 0, dem$: 0 }; }
+  for (const l of L) {
+    const c = l.cost || 0; const has = l.st > 0;
+    if (l.enStock) { if (l.cost == null) K.sinCosto++; }
+    if (has) { K.stock$ += l.st * c; K.stockU += l.st; K.stockP++; }
+    K.dem$ += l.mad * c;
+    if (l.q6 > 0) { K.ventaU += l.q6; K.ventaItems++; if (!has) { K.ventaSinStockU += l.q6; K.ventaSinStockItems++; } }
+    const g = l.inStd ? K.grupos.std : (l.q6 > 0 ? K.grupos.venta : K.grupos.sinventa);
+    if (has) { g.$ += l.st * c; g.p++; g.u += l.st; } g.dem$ += l.mad * c;
+    if (l.inStd) {
+      const S = K.std; S.p++; S.ideal$ += l.stdQty * c; S.idealU += l.stdQty; S.act$ += Math.max(0, l.st) * c; S.actU += Math.max(0, l.st); S.dem$ += l.mad * c;
+      S[l.estado]++; if (l.stdQty > l.st) S.gap$ += (l.stdQty - Math.max(0, l.st)) * c;
+    }
+    const f = finals && finals[l.code] != null ? finals[l.code] : l.sug;
+    if (f > 0) { K.ped.lineas++; K.ped.u += f; K.ped.$ += f * c; }
+  }
+  return K;
+}
+
+if (typeof module !== 'undefined') module.exports = { detectWings, parseWings, rubroDe, detectAutologica, parseAutologicaVentas, parseAutologicaStock, norm, num, aggVentas, aggWings, compute, kpis, DEFAULT_PARAMS, mesKey };
+
+</script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fN=(n,d=0)=>(n==null||isNaN(n))?'–':Number(n).toLocaleString('es-AR',{maximumFractionDigits:d});
+const f$=n=>(n==null||isNaN(n))?'–':'$ '+Math.round(n).toLocaleString('es-AR');
+const fM=n=>{if(n==null||isNaN(n))return'–';const a=Math.abs(n);if(a>=1e9)return'$ '+(n/1e9).toLocaleString('es-AR',{maximumFractionDigits:2})+' mil M';if(a>=1e6)return'$ '+(n/1e6).toLocaleString('es-AR',{maximumFractionDigits:1})+' M';return f$(n)};
+const fD=iso=>{if(!iso)return'–';const d=new Date(iso.length===10?iso+'T12:00:00':iso);return isNaN(d)?iso:d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})};
+const MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const fMes=k=>{const m=String(k).match(/^(\d{4})-(\d{2})$/);return m?MES[+m[2]-1]+' '+m[1].slice(2):k};
+
+let db=null,dl=null;
+const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca'],sucMap:{'CASA CENTRAL':'La Rioja'},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
+  tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
+  ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
+const TABS=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const stdKey=()=>S.P.sucursal||'La Rioja';
+const stdSet=()=>{const k=stdKey();if(!S.stdBy[k])S.stdBy[k]=[];return new Set(S.stdBy[k])};
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3800)}
+
+/* ---------- Persistencia ---------- */
+const wq={};
+function queueWrite(path,getData,delay=700){
+  if(!db)return;const q=wq[path]||(wq[path]={t:null,p:Promise.resolve()});
+  clearTimeout(q.t);q.t=setTimeout(()=>{q.p=q.p.then(()=>db.doc(path).set(getData())).catch(e=>toast('No se pudo guardar: '+(e.message||e.code)))},delay);
+}
+const slug=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'general';
+const PER=['ventas','stock','wings'];
+const dsName=(k,suc)=>PER.includes(k)?`${k}--${slug(suc)}`:k;
+const chunkN={};
+async function writeDataset(doc,meta,rows){
+  const chunks=[];let cur=[],size=0;
+  for(const r of rows){const s=JSON.stringify(r).length+1;if(size+s>110000&&cur.length){chunks.push(cur);cur=[];size=0}cur.push(r);size+=s}
+  if(cur.length)chunks.push(cur);
+  const prev=chunkN[doc]||0;
+  const m=Object.assign({},meta,{chunks:chunks.length,count:rows.length,loadedAt:new Date().toISOString()});
+  if(db){
+    for(let i=0;i<chunks.length;i++)await db.doc(`ds/${doc}/chunks/c${i}`).set({data:JSON.stringify(chunks[i])});
+    await db.doc('ds/'+doc).set({meta:m});
+    for(let i=chunks.length;i<prev;i++)await db.doc(`ds/${doc}/chunks/c${i}`).delete();
+  }
+  chunkN[doc]=chunks.length;return {meta:m,rows};
+}
+async function deleteDataset(doc){
+  if(!db)return;const n=chunkN[doc]||0;
+  for(let i=0;i<n;i++)await db.doc(`ds/${doc}/chunks/c${i}`).delete();
+  await db.doc('ds/'+doc).delete();chunkN[doc]=0;
+}
+async function readDataset(doc){
+  if(!db)return null;const snap=await db.doc('ds/'+doc).get();if(!snap.exists)return null;
+  const meta=snap.data().meta;const parts=await Promise.all(Array.from({length:meta.chunks||0},(_,i)=>db.doc(`ds/${doc}/chunks/c${i}`).get()));
+  const rows=[];for(const p of parts)if(p.exists)rows.push(...JSON.parse(p.data().data));
+  chunkN[doc]=meta.chunks||0;return {meta,rows};
+}
+/* guarda un dataset de la sucursal indicada (o común) y actualiza la vista */
+async function saveDataset(name,meta,rows,suc){
+  suc=suc||S.P.sucursal;const obj=await writeDataset(dsName(name,suc),meta,rows);
+  if(PER.includes(name)){(S.cache[suc]||(S.cache[suc]={}))[name]=obj;if(suc===S.P.sucursal)S.D[name]=obj}else S.D[name]=obj;
+  return obj;
+}
+async function loadSuc(suc){
+  if(!S.cache[suc]){const o={};const r=await Promise.all(PER.map(k=>readDataset(dsName(k,suc))));PER.forEach((k,i)=>o[k]=r[i]);S.cache[suc]=o}
+  return S.cache[suc];
+}
+function wingsFor(suc,o){
+  if(o.wings)return o.wings;
+  if(S.base&&S.base.meta.sucursal===suc)return {meta:Object.assign({},S.base.meta,{base:true}),rows:S.base.rows};
+  return null;
+}
+async function useSuc(suc){
+  S.P.sucursal=suc;const o=await loadSuc(suc);
+  S.D.ventas=o.ventas;S.D.stock=o.stock;S.D.wings=wingsFor(suc,o);
+  S.finals=S.finalsBy[suc]||(S.finalsBy[suc]={});
+}
+const saveParams=()=>queueWrite('config/params',()=>S.P);
+const saveStd=()=>queueWrite('config/std',()=>({bySuc:S.stdBy}));
+const saveSucs=()=>queueWrite('config/sucursales',()=>({list:S.sucs,map:S.sucMap}));
+const saveDraft=()=>{S.finalsBy[S.P.sucursal]=S.finals;queueWrite('config/draft',()=>({bySuc:JSON.stringify(S.finalsBy)}),1200)};
+
+async function boot(){
+  renderShell();
+  try{if(window.claude&&claude.use){[db,dl]=await Promise.all([claude.use('db'),claude.use('downloads')])}}catch(e){}
+  if(!db){S.noDb=true;S.loading=false;recompute();render();return}
+  try{
+    const [p,s,d,sc]=await Promise.all([db.doc('config/params').get(),db.doc('config/std').get(),db.doc('config/draft').get(),db.doc('config/sucursales').get()]);
+    if(p.exists){S.P=Object.assign({},DEFAULT_PARAMS,p.data());if((S.P.exclFam||[]).some(f=>/^Oil /.test(f))){S.P.exclFam=DEFAULT_PARAMS.exclFam.slice();saveParams()}}
+    if(s.exists)S.stdBy=Object.assign({},s.data().bySuc||{});
+    if(d.exists){try{S.finalsBy=JSON.parse(d.data().bySuc||'{}')}catch(e){}}
+    if(sc.exists){S.sucs=sc.data().list||S.sucs;S.sucMap=sc.data().map||{}}
+    if(!S.sucs.includes(S.P.sucursal))S.P.sucursal=S.sucs[0];
+    const [oq,ddp,base]=await Promise.all(['oq','ddp','wingsBase'].map(readDataset));
+    S.D.oq=oq;S.D.ddp=ddp;S.base=base;
+    await useSuc(S.P.sucursal);
+    db.collection('sugeridos').onSnapshot(snap=>{S.saved=snap.docs.map(x=>Object.assign({id:x.id},x.data())).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&(S.tab==='historial'))render();renderChips()},()=>{});
+  }catch(e){toast('Error al leer los datos guardados: '+(e.message||e.code))}
+  S.loading=false;recompute();render();
+}
+async function switchSuc(suc){
+  S.loading=true;try{render()}catch(e){}
+  try{await useSuc(suc)}catch(e){toast('No se pudieron leer los datos de '+suc)}
+  saveParams();S.loading=false;S.ui.fam='';recompute();render();
+}
+
+/* ---------- Cálculo ---------- */
+function recompute(){S.res=compute(S.D,stdSet(),S.P);S.byCode=new Map(S.res.lines.map(l=>[l.code,l]));S.K=kpis(S.res,S.finals)}
+const finalOf=l=>S.finals[l.code]!=null?S.finals[l.code]:l.sug;
+
+/* ---------- Shell ---------- */
+function renderShell(){
+  $('#tabs').innerHTML=TABS.map(([k,t])=>`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${t}</button>`).join('');
+  renderChips();
+}
+function renderChips(){
+  const D=S.D,ch=[];
+  const c=(ok,label,val)=>`<span class="chip"><i class="dot ${ok?'ok':'warn'}"></i>${label} <b>${val}</b></span>`;
+  ch.push(c(!!D.ventas,'Ventas',D.ventas?(D.ventas.meta.fuente==='Autologica'?'total del período'+(D.ventas.meta.loadedAt?', '+fD(D.ventas.meta.loadedAt.slice(0,10)):''):D.ventas.meta.meses.filter(m=>/^\d{4}-/.test(m)).map(fMes).filter((x,i,a)=>i===0||i===a.length-1).join(' – ')||'cargadas'):'sin cargar'));
+  ch.push(c(!!D.stock,'Stock',D.stock?fD(D.stock.meta.fecha):'sin cargar'));
+  ch.push(c(!!D.wings,'Wings',D.wings?(D.wings.meta.base?'Excel base, al ':'al ')+fD(D.wings.meta.hasta):'sin cargar'));
+  ch.push(c(!!D.oq&&!!D.ddp,'DDP y order units',D.oq&&D.ddp?'Excel base':'faltan'));
+  if(S.noDb)ch.push(`<span class="chip"><i class="dot warn"></i>Sin guardado: los datos se pierden al cerrar</span>`);
+  $('#chips').innerHTML=ch.join('');
+  $('#origSel').value=S.P.origen||'';
+  $('#sucSel').innerHTML=S.sucs.map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+'<option value="__add">+ Agregar sucursal…</option>';
+}
+function render(){
+  renderShell();
+  const m=$('#main');
+  if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
+  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams}[S.tab];
+  m.innerHTML=fn();
+  if(S.tab==='informe'){bindChart();fillCmp()}
+}
+function needData(){
+  if(S.D.ventas&&S.D.stock){
+    const ms=S.res.meses,v=S.res.monthTotals,real=ms.map((m,i)=>i).filter(i=>/^\d{4}-\d{2}$/.test(ms[i]));
+    const zero=real.filter(i=>!v[i]);
+    if(zero.length&&zero.length<real.length)return `<div class="note warn"><b>Faltan ventas de ${zero.map(i=>fMes(ms[i])).join(' y ')}</b> para ${esc(stdKey())}: el archivo trae esas filas sin código o sin cantidad. El MAD se está dividiendo por ${S.P.dias} días hábiles con ${real.length-zero.length} meses de datos, así que la demanda queda subestimada. Volvé a cargar las ventas completas en <button class="btn sm" data-tab="datos">Cargar datos</button> o ajustá los días hábiles en Parámetros.</div>`;
+    return'';}
+  return `<div class="note warn">Faltan datos: ${!S.D.ventas?'<b>ventas de los últimos 6 meses</b>':''}${!S.D.ventas&&!S.D.stock?' y ':''}${!S.D.stock?'<b>stock actual</b>':''}. Cargalos en <button class="btn sm" data-tab="datos">Cargar datos</button></div>`;
+}
+
+/* ---------- Vista: Pedido sugerido ---------- */
+function sugRows(){
+  const u=S.ui,q=u.q.trim().toUpperCase();
+  let L=S.res.lines.filter(l=>{
+    if(u.view==='pedir'&&!(finalOf(l)>0||l.sug>0))return false;
+    if(u.view==='std'&&!l.inStd)return false;
+    if(u.view==='venta'&&!(l.q6>0))return false;
+    if(u.fam&&l.fam!==u.fam)return false;
+    if(q&&!(l.code.includes(q)||l.desc.toUpperCase().includes(q)))return false;
+    return true});
+  const key={code:l=>l.code,desc:l=>l.desc,q6:l=>l.q6,mad:l=>l.mad,std:l=>l.stdQty,st:l=>l.st,dif:l=>l.dif,sug:l=>l.sug,fin:l=>finalOf(l),'$':l=>finalOf(l)*(l.cost||0),cost:l=>l.cost||0}[u.sort]||(l=>l.code);
+  L.sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*u.dir});
+  return L;
+}
+function vSug(){
+  const u=S.ui,K=S.K,L=sugRows(),shown=L.slice(0,500);
+  const th=(k,t,n)=>`<th class="s${n?' n':''}" data-sort="${k}">${t}${u.sort===k?(u.dir>0?' ▲':' ▼'):''}</th>`;
+  const obs=l=>[l.topado?'<span class="tag w" title="Recortado por el tope por línea">tope</span>':'',l.odFlag?'<span class="tag w" title="Supera el cupo OD (+30%)">&gt; cupo OD</span>':'',!l.enStock?'<span class="tag" title="No figura en el archivo de stock">sin fila de stock</span>':'',l.enStock&&l.cost==null?'<span class="tag c">sin costo</span>':'',l.inStd?'':'<span class="tag">fuera de std</span>'].join('');
+  const rows=shown.map(l=>{const f=finalOf(l),chg=S.finals[l.code]!=null&&S.finals[l.code]!==l.sug;
+    return `<tr><td class="code">${esc(l.code)}</td><td>${esc(l.orig)}</td><td class="desc" title="${esc(l.desc)}">${esc(l.desc)}</td><td class="faint">${esc(l.fam||'')}</td>
+    <td class="n">${l.ou}</td><td>${l.ddp?'<span class="tag">DDP</span>':''}</td><td class="n">${fN(l.q6,1)}</td><td class="n">${fN(l.mad,2)}</td><td class="n">${fN(l.stdQty)}</td><td class="n">${fN(l.st,1)}</td>
+    <td class="n">${l.bo?fN(l.bo):''}</td><td class="n">${l.od?fN(l.od):''}</td><td class="n">${l.proc?fN(l.proc):''}</td><td class="n faint">${fN(l.cupoOD)}</td>
+    <td class="n${l.sug>0?' hl':''}">${fN(l.sug)}</td><td class="n"><input class="fin${chg?' chg':''}" type="number" min="0" step="${l.ou}" data-fin="${esc(l.code)}" value="${f}" aria-label="Pedido final ${esc(l.code)}"></td>
+    <td class="n">${l.cost==null?'–':f$(l.cost)}</td><td class="n" data-tot="${esc(l.code)}">${f?f$(f*(l.cost||0)):''}</td><td>${obs(l)}</td></tr>`}).join('');
+  const nEdit=Object.keys(S.finals).length;
+  return `${needData()}
+  <section class="panel">
+    <div class="panel-h"><div><h2>Pedido sugerido</h2><p class="sub">Piezas del estándar stock de <b>${esc(stdKey())}</b> cuyo stock quedó por debajo del ideal. Sugerido = faltante − ${[S.P.subBO&&'BO físico',S.P.subProc&&'en proceso',S.P.subOD&&'OD'].filter(Boolean).join(' − ')||'nada'}, redondeado al order unit${S.P.tope>0?`, tope ${S.P.tope} u por línea`:''}. Podés corregir la columna <b>Pedido final</b>.</p></div>
+      <div class="toolbar"><button class="btn" data-act="exportCsv" title="Archivo con código y cantidad del pedido final">Exportar CSV</button><button class="btn" data-act="exportSug">Exportar Excel</button><button class="btn pri" data-act="openSave">Guardar sugerido</button></div></div>
+    ${u.saveOpen?`<form class="note" id="saveForm" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px"><label for="saveName">Nombre</label><input type="text" id="saveName" value="Pedido ${esc(stdKey())} ${new Date().toLocaleDateString('es-AR')}" style="flex:1;min-width:200px"><button class="btn pri" type="submit">Guardar</button><button class="btn" type="button" data-act="closeSave">Cancelar</button><span class="faint">Se guardan ${K.ped.lineas} líneas · ${fN(K.ped.u)} u · ${f$(K.ped.$)}</span></form>`:''}
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile"><div class="l">Líneas a pedir</div><div class="v" id="tLin">${fN(K.ped.lineas)}</div></div>
+      <div class="tile"><div class="l">Unidades</div><div class="v" id="tU">${fN(K.ped.u)}</div></div>
+      <div class="tile"><div class="l">Monto a costo rep.</div><div class="v" id="tM">${f$(K.ped.$)}</div></div>
+      <div class="tile"><div class="l">Faltante bruto std</div><div class="v">${fM(K.std.gap$)}</div><div class="n">antes de BO / proceso</div></div>
+    </div>
+    <div class="toolbar" style="margin-bottom:10px">
+      <div class="seg" role="group" aria-label="Vista">${[['pedir','Para pedir'],['std','Estándar'],['venta','Con venta'],['todo','Todo']].map(([k,t])=>`<button data-view="${k}" aria-pressed="${u.view===k}">${t}</button>`).join('')}</div>
+      <input type="search" id="q" placeholder="Buscar código o descripción" value="${esc(u.q)}" style="flex:1;min-width:180px">
+      <select id="fam" aria-label="Familia"><option value="">Todos los rubros</option>${S.res.fams.map(f=>`<option${f===u.fam?' selected':''}>${esc(f)}</option>`).join('')}</select>
+      ${nEdit?`<button class="btn sm" data-act="resetFin">Deshacer ${nEdit} cambios</button>`:''}
+    </div>
+    ${L.length?`<div class="tw"><table><thead><tr>${th('code','Código')}<th title="N original / P nacional">Orig.</th>${th('desc','Descripción')}<th>Rubro</th><th class="n" title="Order unit / unidad de venta Ford">OU</th><th>DDP</th>${th('q6','Venta 6m',1)}${th('mad','MAD',1)}${th('std','Std',1)}${th('st','Stock',1)}<th class="n">BO</th><th class="n">OD</th><th class="n">Proceso</th><th class="n" title="Cupo OD +30% (mín. 10)">Cupo OD</th>${th('sug','Sugerido',1)}${th('fin','Pedido final',1)}${th('cost','Cto. rep.',1)}${th('$','$ pedido',1)}<th>Obs.</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${L.length>500?`<p class="faint">Mostrando 500 de ${fN(L.length)} filas. Usá la búsqueda o exportá a Excel para ver todo.</p>`:''}`
+    :(u.view==='pedir'&&!stdSet().size?stdEmpty():`<div class="empty">${u.view==='pedir'?'No hay piezas para pedir con los datos y parámetros actuales.':'No hay filas con este filtro.'}</div>`)}
+  </section>`;
+}
+function stdEmpty(){
+  const nc=S.res.lines.filter(l=>l.cand).length;const others=Object.keys(S.stdBy).filter(k=>k!==stdKey()&&(S.stdBy[k]||[]).length);
+  return `<div class="note warn" style="display:grid;gap:10px"><div><b>${esc(stdKey())} todavía no tiene estándar stock.</b> El sugerido solo pide piezas del estándar, por eso sale vacío. Elegí cómo armarlo; después podés quitar o sumar piezas en la pestaña Estándar stock.</div>
+  <div class="toolbar">${nc?`<button class="btn pri" data-act="addAllCand">Armar con la regla: ${nc} piezas con más de ${S.P.minStd} u vendidas</button>`:''}${others.map(k=>`<button class="btn" data-act="copyStd" data-from="${esc(k)}">Copiar el estándar de ${esc(k)} (${S.stdBy[k].length})</button>`).join('')}<button class="btn" data-tab="std">Armarlo a mano</button></div></div>`;
+}
+function updateTotals(){S.K=kpis(S.res,S.finals);const K=S.K;const a=$('#tLin');if(a){a.textContent=fN(K.ped.lineas);$('#tU').textContent=fN(K.ped.u);$('#tM').textContent=f$(K.ped.$)}}
+
+/* ---------- Vista: Estándar stock ---------- */
+const EST={quiebre:['Quiebre','p-quiebre','var(--crit)'],bajo:['Bajo el estándar','p-bajo','var(--warn)'],ok:['En estándar','p-ok','var(--ok)'],exceso:['Exceso','p-exceso','var(--info)'],sin:['Sin demanda','p-sin','var(--faint)']};
+function vStd(){
+  const u=S.ui,K=S.K.std,q=u.stdQ.trim().toUpperCase();
+  const all=S.res.lines.filter(l=>l.inStd);
+  const L=all.filter(l=>(!u.stdEst||l.estado===u.stdEst)&&(!q||l.code.includes(q)||l.desc.toUpperCase().includes(q))).sort((a,b)=>(['quiebre','bajo','ok','exceso','sin'].indexOf(a.estado)-['quiebre','bajo','ok','exceso','sin'].indexOf(b.estado))||(b.q6-a.q6));
+  const cq=u.candQ.trim().toUpperCase();
+  const cand=S.res.lines.filter(l=>l.cand&&(!cq||l.code.includes(cq)||l.desc.toUpperCase().includes(cq))).sort((a,b)=>b.q6-a.q6);
+  const tot=all.length||1;
+  const bar=Object.keys(EST).filter(k=>K[k]).map(k=>`<span style="width:${K[k]/tot*100}%;background:${EST[k][2]}" title="${EST[k][0]}: ${K[k]}"></span>`).join('');
+  const cov=K.idealU?Math.min(1,(all.reduce((s,l)=>s+Math.min(Math.max(0,l.st),l.stdQty),0))/K.idealU):0;
+  return `${needData()}
+  <section class="panel">
+    <div class="panel-h"><div><h2>Estándar stock · ${esc(stdKey())}</h2><p class="sub">Piezas que decidiste tener siempre en stock. Cantidad ideal = ⌈MAD × (${S.P.oc} ciclo + LT ${S.P.ltNormal}/${S.P.ltDDP} DDP + ${S.P.ss} SS) ÷ 20⌉ días hábiles.</p></div>
+    <div class="toolbar"><button class="btn" data-act="exportStd">Exportar Excel</button></div></div>
+    <div class="tiles">
+      <div class="tile"><div class="l">Partes en estándar</div><div class="v">${fN(K.p)}</div></div>
+      <div class="tile"><div class="l">Stock ideal</div><div class="v">${fM(K.ideal$)}</div><div class="n">${fN(K.idealU)} u</div></div>
+      <div class="tile"><div class="l">Stock actual (std)</div><div class="v">${fM(K.act$)}</div><div class="n">${fN(K.actU,1)} u</div></div>
+      <div class="tile"><div class="l">Cobertura del ideal</div><div class="v">${fN(cov*100,1)} %</div><div class="n">unidades cubiertas</div></div>
+      <div class="tile"><div class="l">Meses de stock std</div><div class="v">${K.dem$?fN(K.act$/K.dem$,1):'–'}</div><div class="n">$ stock ÷ $ MAD</div></div>
+    </div>
+    <div style="margin-top:14px"><div class="bars" role="img" aria-label="Distribución por estado">${bar}</div>
+    <div class="legend">${Object.keys(EST).map(k=>`<span class="pill ${EST[k][1]}">${EST[k][0]}</span><b>${K[k]}</b>`).join('')}</div></div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h3>Piezas del estándar</h3>
+      <div class="toolbar"><input type="search" id="stdQ" placeholder="Buscar" value="${esc(u.stdQ)}"><select id="stdEst"><option value="">Todos los estados</option>${Object.keys(EST).map(k=>`<option value="${k}"${u.stdEst===k?' selected':''}>${EST[k][0]}</option>`).join('')}</select>
+      <form id="addStd" class="toolbar"><input type="text" id="addCode" placeholder="Agregar código" style="width:170px"><button class="btn" type="submit">Agregar</button></form></div></div>
+    ${all.length?`<div class="tw"><table><thead><tr><th>Estado</th><th>Código</th><th>Descripción</th><th>Rubro</th><th class="n">Venta 6m</th><th class="n">MAD</th><th class="n">LT</th><th class="n">Ideal</th><th class="n">Stock</th><th class="n">Meses stock</th><th class="n">$ ideal</th><th class="n">$ actual</th><th></th></tr></thead><tbody>
+    ${L.map(l=>`<tr><td><span class="pill ${EST[l.estado][1]}">${EST[l.estado][0]}</span></td><td class="code">${esc(l.code)}</td><td class="desc" title="${esc(l.desc)}">${esc(l.desc)}</td><td class="faint">${esc(l.fam)}</td><td class="n">${fN(l.q6,1)}</td><td class="n">${fN(l.mad,2)}</td><td class="n">${l.lt}</td><td class="n">${fN(l.stdQty)}</td><td class="n">${fN(l.st,1)}</td><td class="n">${l.mad?fN(l.st/l.mad,1):'–'}</td><td class="n">${f$(l.stdQty*(l.cost||0))}</td><td class="n">${f$(Math.max(0,l.st)*(l.cost||0))}</td><td><button class="btn sm" data-rmstd="${esc(l.code)}">Quitar</button></td></tr>`).join('')}
+    </tbody></table></div>`:`<div class="empty">Todavía no hay piezas en el estándar de ${esc(stdKey())}. ${S.res.lines.some(l=>l.cand)?` <button class="btn sm" data-act="addAllCand">Armar con la regla (${S.res.lines.filter(l=>l.cand).length} piezas)</button>`:''} Agregá candidatos desde la lista de abajo${Object.keys(S.stdBy).filter(k=>k!==stdKey()&&(S.stdBy[k]||[]).length).map(k=>` o <button class="btn sm" data-act="copyStd" data-from="${esc(k)}">copiá el estándar de ${esc(k)} (${S.stdBy[k].length})</button>`).join('')}.</div>`}
+  </section>
+  <section class="panel">
+    <div class="panel-h"><div><h3>Candidatos a sumar</h3><p class="sub">Piezas con más de ${S.P.minStd} unidades vendidas en el período, de proveedor Ford, fuera de los rubros excluidos (${esc((S.P.exclFam||[]).join(', ')||'ninguno')}), que todavía no están en el estándar.</p></div>
+    <div class="toolbar"><input type="search" id="candQ" placeholder="Buscar" value="${esc(u.candQ)}">${cand.length?`<button class="btn" data-act="addAllCand">Agregar los ${cand.length}</button>`:''}</div></div>
+    ${cand.length?`<div class="tw" style="max-height:420px"><table><thead><tr><th>Código</th><th>Descripción</th><th>Rubro</th><th class="n">Venta 6m</th><th class="n">MAD</th><th class="n">Ideal</th><th class="n">Stock</th><th></th></tr></thead><tbody>
+    ${cand.slice(0,300).map(l=>`<tr><td class="code">${esc(l.code)}</td><td class="desc" title="${esc(l.desc)}">${esc(l.desc)}</td><td class="faint">${esc(l.fam)}</td><td class="n">${fN(l.q6,1)}</td><td class="n">${fN(l.mad,2)}</td><td class="n">${fN(l.stdQty)}</td><td class="n">${fN(l.st,1)}</td><td><button class="btn sm" data-addstd="${esc(l.code)}">Agregar</button></td></tr>`).join('')}
+    </tbody></table></div>`:'<div class="empty">No hay candidatos con el criterio actual.</div>'}
+  </section>`;
+}
+
+/* ---------- Vista: Informe ---------- */
+function vInf(){
+  const K=S.K,G=K.grupos,P=S.P;
+  const row=(t,g)=>`<tr><td>${t}</td><td class="n">${f$(g.$)}</td><td class="n">${K.stock$?fN(g.$/K.stock$*100,1)+' %':'–'}</td><td class="n">${fN(g.p)}</td><td class="n">${fN(g.u,1)}</td><td class="n">${g.dem$>0?fN(g.$/g.dem$,1):'–'}</td></tr>`;
+  const inm=S.res.lines.filter(l=>!l.q6&&l.st>0).sort((a,b)=>b.st*(b.cost||0)-a.st*(a.cost||0)).slice(0,12);
+  const fal=S.res.lines.filter(l=>l.inStd&&l.stdQty>l.st).sort((a,b)=>(b.stdQty-Math.max(0,b.st))*(b.cost||0)-(a.stdQty-Math.max(0,a.st))*(a.cost||0)).slice(0,12);
+  const exc=S.res.lines.filter(l=>l.inStd&&l.estado==='exceso').sort((a,b)=>(b.st-b.stdQty)*(b.cost||0)-(a.st-a.stdQty)*(a.cost||0)).slice(0,12);
+  const mini=(title,L,cols)=>`<section class="panel"><h3 style="margin-bottom:10px">${title}</h3>${L.length?`<div class="tw" style="max-height:none"><table><thead><tr><th>Código</th><th>Descripción</th>${cols.map(c=>`<th class="n">${c[0]}</th>`).join('')}</tr></thead><tbody>${L.map(l=>`<tr><td class="code">${esc(l.code)}</td><td class="desc" title="${esc(l.desc)}">${esc(l.desc)}</td>${cols.map(c=>`<td class="n">${c[1](l)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="empty">Sin filas.</div>'}</section>`;
+  return `${needData()}
+  <section class="panel">
+    <div class="panel-h"><div><h2>Análisis de stock · ${esc(stdKey())}</h2><p class="sub">Stock al ${fD(S.D.stock&&S.D.stock.meta.fecha)} · ${S.P.origen?'origen '+(S.P.origen==='N'?'N original':'P nacional'):'todos los orígenes'} · ventas ${S.D.ventas&&S.D.ventas.meta.fuente==='Autologica'?'total del período ('+S.P.dias+' días hábiles)':esc((S.res.meses.filter(m=>/^\d{4}-/.test(m)).map(fMes)).join(', ')||'–')} · valorizado a costo de reposición.</p></div>
+    <div class="toolbar"><button class="btn" data-act="exportInf">Exportar informe Excel</button></div></div>
+    <div class="tiles">
+      <div class="tile"><div class="l">Stock total</div><div class="v">${fM(K.stock$)}</div><div class="n">${fN(K.stockP)} partes · ${fN(K.stockU)} u</div></div>
+      <div class="tile"><div class="l">Demanda mensual (MAD)</div><div class="v">${fM(K.dem$)}</div><div class="n">a costo rep.</div></div>
+      <div class="tile"><div class="l">Meses de inventario</div><div class="v">${K.dem$?fN(K.stock$/K.dem$,1):'–'}</div><div class="n">$ stock ÷ $ MAD</div></div>
+      <div class="tile"><div class="l">Sin venta en 6 meses</div><div class="v">${fM(G.sinventa.$)}</div><div class="n">${K.stock$?fN(G.sinventa.$/K.stock$*100,0):0} % del stock</div></div>
+      <div class="tile"><div class="l">Estándar ideal</div><div class="v">${fM(K.std.ideal$)}</div><div class="n">actual ${fM(K.std.act$)}</div></div>
+    </div>
+  </section>
+  <section class="panel"><h3 style="margin-bottom:10px">Distribución por demanda</h3>
+      <div class="tw" style="max-height:none"><table><thead><tr><th>Grupo</th><th class="n">$ stock</th><th class="n">% $</th><th class="n">Partes</th><th class="n">Unidades</th><th class="n">MDI</th></tr></thead><tbody>
+      ${row('Estándar stock',G.std)}${row('Con venta, fuera del estándar',G.venta)}${row('Sin venta en el período',G.sinventa)}
+      </tbody><tfoot><tr><td>Total</td><td class="n">${f$(K.stock$)}</td><td class="n">100 %</td><td class="n">${fN(K.stockP)}</td><td class="n">${fN(K.stockU,1)}</td><td class="n">${K.dem$?fN(K.stock$/K.dem$,1):'–'}</td></tr></tfoot></table></div>
+      <p class="faint" style="margin:8px 0 0">MDI = meses de inventario ($ stock ÷ $ demanda mensual). ${K.sinCosto?`${fN(K.sinCosto)} piezas del stock no tienen costo y no suman al valorizado.`:''}</p>
+    </section>
+  <div class="grid2">
+    ${hasMonths()?`<section class="panel"><h3 style="margin-bottom:4px">Unidades vendidas por mes</h3><p class="sub" style="margin-bottom:8px">${fN(K.ventaU)} u en ${fN(K.ventaItems)} códigos. ${fN(K.ventaSinStockItems)} de esos códigos (${fN(K.ventaSinStockU)} u) hoy no tienen stock.</p>
+      <div class="chart" id="chart"></div></section>`:vProv(K)}
+    ${vAct(K)}
+  </div>
+  <div class="grid2">
+    <section class="panel"><h3 style="margin-bottom:10px">Parámetros usados</h3>
+      <dl class="kv"><dt>Ciclo de orden</dt><dd>${P.oc} días</dd><dt>Lead time normal</dt><dd>${P.ltNormal} días</dd><dt>Lead time DDP</dt><dd>${P.ltDDP} días</dd><dt>Stock de seguridad</dt><dd>${P.ss} días</dd><dt>Días hábiles del período</dt><dd>${P.dias}</dd><dt>Descuenta del sugerido</dt><dd>${[P.subBO&&'BO físico',P.subProc&&'en proceso',P.subOD&&'OD'].filter(Boolean).join(', ')||'nada'}</dd><dt>Tope por línea</dt><dd>${P.tope>0?P.tope+' u':'sin tope'}</dd></dl></section>
+    <section class="panel"><h3 style="margin-bottom:10px">Estado del estándar</h3>
+      <dl class="kv">${Object.keys(EST).map(k=>`<dt><span class="pill ${EST[k][1]}">${EST[k][0]}</span></dt><dd>${K.std[k]} partes</dd>`).join('')}<dt>Faltante para llegar al ideal</dt><dd>${f$(K.std.gap$)}</dd><dt>Pedido actual</dt><dd>${fN(K.ped.lineas)} líneas · ${f$(K.ped.$)}</dd></dl></section>
+  </div>
+  <div class="grid2">
+    ${mini('Mayores faltantes del estándar',fal,[['Ideal',l=>fN(l.stdQty)],['Stock',l=>fN(l.st,1)],['$ faltante',l=>f$((l.stdQty-Math.max(0,l.st))*(l.cost||0))]])}
+    ${mini('Mayor exceso dentro del estándar',exc,[['Ideal',l=>fN(l.stdQty)],['Stock',l=>fN(l.st,1)],['$ excedente',l=>f$((l.st-l.stdQty)*(l.cost||0))]])}
+  </div>
+  ${S.sucs.length>1?'<section class="panel" id="cmp"><h3>Comparativo de sucursales</h3><div class="empty">Calculando…</div></section>':''}
+  ${mini('Stock inmovilizado: mayor valor sin venta en el período',inm,[['Stock',l=>fN(l.st,1)],['Cto. rep.',l=>f$(l.cost)],['$ stock',l=>f$(l.st*(l.cost||0))]])}`;
+}
+const hasMonths=()=>S.res.meses.some((m,i)=>/^\d{4}-/.test(m)&&S.res.monthTotals[i]>0);
+function vProv(K){
+  const pt=(S.D.ventas&&S.D.ventas.meta.provTot)||{};const E=Object.entries(pt).sort((a,b)=>b[1]-a[1]);const tot=E.reduce((s,e)=>s+e[1],0)||1;const top=E.slice(0,8),rest=E.slice(8).reduce((s,e)=>s+e[1],0);
+  return `<section class="panel"><h3 style="margin-bottom:4px">Ventas del período por proveedor</h3><p class="sub" style="margin-bottom:10px">${fN(K.ventaU)} u en ${fN(K.ventaItems)} códigos. ${fN(K.ventaSinStockItems)} de esos códigos (${fN(K.ventaSinStockU)} u) hoy no tienen stock. </p>
+  ${E.length?`<div class="tw" style="max-height:none"><table><thead><tr><th>Proveedor</th><th class="n">Unidades</th><th class="n">%</th></tr></thead><tbody>${top.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${fN(v)}</td><td class="n">${fN(v/tot*100,1)} %</td></tr>`).join('')}${rest?`<tr><td class="faint">Otros ${E.length-8} proveedores</td><td class="n">${fN(rest)}</td><td class="n">${fN(rest/tot*100,1)} %</td></tr>`:''}</tbody></table></div>`:'<div class="empty">Sin datos de proveedor.</div>'}</section>`;
+}
+function vAct(K){
+  const g={};for(const l of S.res.lines){if(!(l.st>0))continue;const k=l.act||'(sin dato)';const o=g[k]||(g[k]={p:0,u:0,$:0,v:0});o.p++;o.u+=l.st;o.$+=l.st*(l.cost||0);if(l.q6>0)o.v++}
+  const E=Object.entries(g).sort((a,b)=>b[1].$-a[1].$);if(E.length<2&&E[0]&&E[0][0]==='(sin dato)')return'';
+  return `<section class="panel"><h3 style="margin-bottom:4px">Stock por actividad</h3><p class="sub" style="margin-bottom:10px">Clasificación de Autologica. "Con venta" cuenta las piezas que se vendieron en el período.</p>
+  <div class="tw" style="max-height:none"><table><thead><tr><th>Actividad</th><th class="n">$ stock</th><th class="n">% $</th><th class="n">Partes</th><th class="n">Con venta</th></tr></thead><tbody>${E.map(([k,o])=>`<tr><td>${esc(k)}</td><td class="n">${f$(o.$)}</td><td class="n">${K.stock$?fN(o.$/K.stock$*100,1):0} %</td><td class="n">${fN(o.p)}</td><td class="n">${fN(o.v)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+async function fillCmp(){
+  const el=$('#cmp');if(!el)return;const out=[];
+  for(const s of S.sucs){let o;try{o=await loadSuc(s)}catch(e){o={}}
+    if(!o.stock&&!o.ventas){out.push([s,null]);continue}
+    const D={oq:S.D.oq,ddp:S.D.ddp,ventas:o.ventas,stock:o.stock,wings:wingsFor(s,o)};
+    const r=compute(D,new Set(S.stdBy[s]||[]),Object.assign({},S.P,{sucursal:s}));out.push([s,kpis(r,S.finalsBy[s]||{}),o])}
+  if(!$('#cmp'))return;
+  $('#cmp').innerHTML=`<h3 style="margin-bottom:4px">Comparativo de sucursales</h3><p class="sub" style="margin-bottom:10px">Mismos parámetros y origen (${S.P.origen?S.P.origen==='N'?'N original':'P nacional':'todos'}) para las dos.</p>
+  <div class="tw" style="max-height:none"><table><thead><tr><th>Sucursal</th><th>Stock al</th><th class="n">$ stock</th><th class="n">$ demanda mensual</th><th class="n">MDI</th><th class="n">% sin venta</th><th class="n">Partes std</th><th class="n">Quiebre / bajo</th><th class="n">Líneas a pedir</th><th class="n">$ pedido</th></tr></thead><tbody>
+  ${out.map(([s,K,o])=>K?`<tr${s===S.P.sucursal?' style="font-weight:600"':''}><td>${esc(s)}</td><td>${o.stock?fD(o.stock.meta.fecha):'<span class="faint">sin stock</span>'}</td><td class="n">${fM(K.stock$)}</td><td class="n">${fM(K.dem$)}</td><td class="n">${K.dem$?fN(K.stock$/K.dem$,1):'–'}</td><td class="n">${K.stock$?fN(K.grupos.sinventa.$/K.stock$*100,0)+' %':'–'}</td><td class="n">${fN(K.std.p)}</td><td class="n">${fN(K.std.quiebre)} / ${fN(K.std.bajo)}</td><td class="n">${fN(K.ped.lineas)}</td><td class="n">${f$(K.ped.$)}</td></tr>`:`<tr><td>${esc(s)}</td><td colspan="9" class="faint">Sin datos cargados todavía</td></tr>`).join('')}</tbody></table></div>`;
+}
+function bindChart(){
+  const el=$('#chart');if(!el)return;const ms=S.res.meses,vals=S.res.monthTotals;
+  const idx=ms.map((m,i)=>i).filter(i=>/^\d{4}-/.test(ms[i]));
+  if(!idx.length){el.innerHTML='<div class="empty">Sin datos por mes.</div>';return}
+  const W=560,H=220,pl=44,pr=8,pt=12,pb=26,max=Math.max(...idx.map(i=>vals[i]))||1;
+  const step=Math.pow(10,Math.floor(Math.log10(max)));const nice=[1,2,2.5,5,10].map(x=>x*step).find(x=>max/x<=5)||step*10;const top=Math.ceil(max/nice)*nice;
+  const bw=(W-pl-pr)/idx.length,y=v=>pt+(H-pt-pb)*(1-v/top);
+  let g='';for(let v=0;v<=top+1e-9;v+=nice){g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${y(v)+4}" text-anchor="end">${fN(v)}</text>`}
+  const bars=idx.map((i,k)=>{const x=pl+k*bw+bw*.2,w=bw*.6,yy=y(vals[i]),h=H-pb-yy,r=Math.min(4,w/2,h);
+    return `<path d="M${x},${H-pb} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+w-r} Q${x+w},${yy} ${x+w},${yy+r} V${H-pb} Z" fill="var(--bar)"/><rect x="${pl+k*bw}" y="${pt}" width="${bw}" height="${H-pt-pb}" fill="transparent" data-i="${i}"/><text x="${x+w/2}" y="${H-8}" text-anchor="middle">${fMes(ms[i])}</text>`}).join('');
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Unidades vendidas por mes">${g}${bars}</svg><div class="tip" hidden></div>`;
+  const tip=el.querySelector('.tip');
+  el.querySelectorAll('rect[data-i]').forEach(r=>{r.addEventListener('mouseenter',()=>{const i=+r.dataset.i;const b=r.getBoundingClientRect(),e=el.getBoundingClientRect();tip.textContent=`${fMes(ms[i])}: ${fN(vals[i])} u`;tip.style.left=(b.left-e.left+b.width/2)+'px';tip.style.top=(e.height*(y(vals[i])/H))+'px';tip.hidden=false});r.addEventListener('mouseleave',()=>tip.hidden=true)});
+}
+
+/* ---------- Vista: Historial ---------- */
+function vHist(){
+  const u=S.ui;const L=S.saved;
+  const sel=L.find(x=>x.id===u.openSaved);
+  let det='';
+  if(sel){let lines=[];try{lines=JSON.parse(sel.lines||'[]')}catch(e){}
+    det=`<section class="panel"><div class="panel-h"><div><h2>${esc(sel.nombre)}</h2><p class="sub">Guardado el ${new Date(sel.fecha).toLocaleString('es-AR')} · ${esc(sel.sucursal)} · stock al ${fD(sel.stockFecha)}</p></div>
+      <div class="toolbar"><label class="suc" for="estSel">Estado</label><select id="estSel" data-id="${sel.id}">${['Borrador','Enviado a Ford','Recibido'].map(e=>`<option${e===sel.estado?' selected':''}>${e}</option>`).join('')}</select>
+      <button class="btn" data-act="exportSavedCsv">Exportar CSV</button><button class="btn" data-act="exportSaved">Exportar Excel</button>
+      ${u.confirmDel===sel.id?`<span class="confirm">¿Eliminar este pedido? <button class="btn sm danger" data-act="delSaved">Sí, eliminar</button><button class="btn sm" data-act="noDel">No</button></span>`:`<button class="btn danger" data-act="askDel">Eliminar</button>`}</div></div>
+      <div class="tiles" style="margin-bottom:12px"><div class="tile"><div class="l">Líneas</div><div class="v">${fN(sel.resumen.lineas)}</div></div><div class="tile"><div class="l">Unidades</div><div class="v">${fN(sel.resumen.u)}</div></div><div class="tile"><div class="l">Monto</div><div class="v">${f$(sel.resumen.monto)}</div></div></div>
+      <div class="tw"><table><thead><tr><th>Código</th><th>Descripción</th><th class="n">Stock</th><th class="n">Std</th><th class="n">Sugerido</th><th class="n">Pedido final</th><th class="n">Cto. rep.</th><th class="n">$ pedido</th></tr></thead><tbody>
+      ${lines.map(r=>`<tr><td class="code">${esc(r[0])}</td><td class="desc">${esc(r[1])}</td><td class="n">${fN(r[2],1)}</td><td class="n">${fN(r[3])}</td><td class="n">${fN(r[4])}</td><td class="n hl">${fN(r[5])}</td><td class="n">${r[6]==null?'–':f$(r[6])}</td><td class="n">${f$(r[5]*(r[6]||0))}</td></tr>`).join('')}</tbody></table></div></section>`}
+  return `<section class="panel"><div class="panel-h"><div><h2>Historial de sugeridos</h2><p class="sub">Cada vez que guardás un sugerido queda acá con sus cantidades finales, para consultarlo o volver a exportarlo.</p></div></div>
+  ${L.length?`<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${L.map(x=>`<div class="list-row${x.id===u.openSaved?' sel':''}" data-open="${x.id}"><div style="min-width:0"><b>${esc(x.nombre)}</b><div class="faint" style="font-size:12px">${new Date(x.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})} · ${esc(x.sucursal)} · ${esc(x.estado||'Borrador')}</div></div><div style="text-align:right;font-variant-numeric:tabular-nums">${fN(x.resumen.lineas)} líneas · ${fN(x.resumen.u)} u<div class="faint" style="font-size:12px">${f$(x.resumen.monto)}</div></div></div>`).join('')}</div>`
+  :`<div class="empty">${S.noDb?'El guardado no está disponible en esta vista.':'Todavía no guardaste ningún sugerido. Revisá el pedido en <b>Pedido sugerido</b> y tocá <b>Guardar sugerido</b>.'}</div>`}</section>${det}`;
+}
+
+/* ---------- Vista: Cargar datos ---------- */
+const KINDS={
+  ventas:{t:'Ventas de los últimos 6 meses',req:1,d:'Informe de Autologica <i>Ventas &gt; Por proveedor y rango de fechas</i> exportado a Excel. También acepta otros listados con código y cantidad.',
+    f:[['code','Código de pieza',[/^co_?pieza$/,/^art[ií]culo$/,/c[oó]digo/,/popims/,/^pieza$/],1],['desc','Descripción',[/descrip/,/^pieza$/]],['qty','Cantidad',[/^cantidad$/,/^cant\.?$/,/cantidad/,/unid/],1],
+       ['suc','Sucursal',[/boca/,/sucursal/],0,'last'],['mes','Mes',[/^mes$/,/per[ií]odo/]],['fecha','Fecha',[/^fecha$/,/fecha/]],['fam','Familia',[/familia/,/rubro/]]]},
+  stock:{t:'Stock actual',req:1,d:'Informe de Autologica <i>Stock &gt; Stock a costo &gt; Detallado</i> exportado a Excel. Toma stock, costo de reposición y actividad.',
+    f:[['code','Código',[/^art[ií]culo$/,/c[oó]digo/,/^co_?pieza$/,/pieza/],1],['desc','Descripción',[/descrip/]],['qty','Stock',[/^stock/,/existencia/,/^cantidad/,/stock/],1],['cost','Costo de reposición',[/cto\.?\s*rep/,/costo/,/reposic/,/precio/]]]},
+  wings:{t:'Pedidos Wings',req:0,d:'Descarga de pedidos de Wings (archivo HR_191…xlsx): BO físico (40), OD (50), en proceso (10, 20, 25, 43, 44, 58) y cupo OD de los últimos 4 meses. Si no cargás uno nuevo, se usan los pedidos del Excel base.',
+    f:[['fecha','Fecha',[/^fecha( pedido)?$/],1],['codPed','Pieza pedida',[/pieza pedida/],1],['qPed','# Pedida',[/#\s*pedida/,/cant.*pedida/],1],['codFac','Pieza facturada',[/pieza factur/]],['qFac','# Facturada',[/#\s*factur/,/cant.*factur/],1],['estado','Estado',[/estado/],1]]}
+};
+function vDatos(){
+  const D=S.D;
+  const st=k=>{const d=D[k];if(!d)return'<span class="faint">Sin cargar</span>';const m=d.meta;
+    const extra=k==='ventas'?(m.fuente==='Autologica'?` · ${esc(m.sucursales.join(', '))} · total por código`:` · ${m.sucursales.length} sucursal(es) · ${m.meses.filter(x=>/^\d{4}-/.test(x)).map(fMes).join(', ')}`):k==='stock'?` · stock al ${fD(m.fecha)}${m.sucursal?' · '+esc(m.sucursal):''}`:k==='wings'?` · ${fD(m.desde)} a ${fD(m.hasta)}`:'';
+    return `<b>${esc(m.fileName||'archivo')}</b><br>${fN(m.count)} filas${extra}<br><span class="faint">Cargado ${m.loadedAt?new Date(m.loadedAt).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}):''}</span>`};
+  const p=S.pending;
+  return `<section class="panel"><h2>Cargar datos · ${esc(S.P.sucursal)}</h2><p class="sub">Los archivos se guardan en la sucursal elegida arriba; cada sucursal tiene sus ventas, stock y pedidos Wings. Subí los Excel como los bajás del sistema. La app detecta las columnas; revisá el mapeo y confirmá. Los datos quedan guardados y reemplazan la carga anterior.</p></section>
+  <div class="cards">${Object.entries(KINDS).map(([k,o])=>`<div class="card"><span class="${o.req?'req':'opt'}">${o.req?'Obligatorio':'Opcional'}</span><h3>${o.t}</h3><p class="sub" style="margin:0">${o.d}</p><div class="st">${st(k)}</div>
+    <div class="toolbar"><label class="btn file${o.req?' pri':''}">Elegir archivo<input type="file" accept=".xlsx,.xls,.xlsm,.csv" data-file="${k}"></label>${k==='wings'&&D.wings&&!D.wings.meta.base?`<button class="btn" data-act="wingsBase">${S.base&&S.base.meta.sucursal===S.P.sucursal?'Volver a los del Excel base':'Borrar'}</button>`:''}</div></div>`).join('')}
+    <div class="card"><span class="opt">Fijo</span><h3>Tablas Ford</h3><p class="sub" style="margin:0">Salen del Excel base PEDIDO SUGERIDO: piezas DDP (lead time ${S.P.ltDDP} días) y order units de Ford. </p>
+    <div class="st"><b>${fN(D.ddp?D.ddp.meta.count:0)}</b> piezas DDP<br><b>${fN(D.oq?D.oq.meta.count:0)}</b> piezas con order unit mayor a 1</div></div></div>
+  ${p?vMapping(p):''}`;
+}
+function vAutoWings(p){
+  const a=p.auto,g=a.agg,cnt=i=>g.rows.filter(r=>r[i]>0).length,sum=i=>g.rows.reduce((s,r)=>s+(r[i]||0),0);
+  const est=Object.entries(a.est).sort((x,y)=>y[1]-x[1]);
+  return `<section class="panel" id="mapPanel"><div class="panel-h"><div><h2>Pedidos Wings</h2><p class="sub">${esc(p.fileName)}. Se reconoció el formato de Wings; revisá el resumen y confirmá.</p></div>
+    <div class="toolbar"><button class="btn" data-act="cancelMap">Cancelar</button><button class="btn pri" data-act="confirmMap"${S.busy?' disabled':''}>${S.busy?'Guardando…':'Confirmar y guardar'}</button></div></div>
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile"><div class="l">Pedidos del</div><div class="v" style="font-size:18px">${fD(g.meta.desde)} – ${fD(g.meta.hasta)}</div><div class="n">${fN(a.raw.length)} líneas · empresa ${esc(a.empresa)}</div></div>
+      <div class="tile"><div class="l">BO físico (40)</div><div class="v">${fN(cnt(1))}</div><div class="n">${fN(sum(1))} u</div></div>
+      <div class="tile"><div class="l">OD diferido (50)</div><div class="v">${fN(cnt(2))}</div><div class="n">${fN(sum(2))} u</div></div>
+      <div class="tile"><div class="l">En proceso</div><div class="v">${fN(cnt(3))}</div><div class="n">${fN(sum(3))} u</div></div>
+      <div class="tile"><div class="l">Cupo OD</div><div class="v" style="font-size:18px">${g.meta.cupoMeses.length?fMes(g.meta.cupoMeses[0])+' – '+fMes(g.meta.cupoMeses[g.meta.cupoMeses.length-1]):'–'}</div><div class="n">promedio pedido de esos 4 meses</div></div>
+    </div>
+    <div class="map"><label>Guardar en<select id="autoSuc">${S.sucs.map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value="__all"${p.sucApp==='__all'?' selected':''}>Las dos sucursales</option></select><small class="faint">Wings trae el código de empresa ${esc(a.empresa)}. Si La Rioja y Catamarca piden con el mismo código, elegí "Las dos sucursales".</small></label></div>
+    <p class="faint" style="margin:10px 0 0">Estados: ${est.map(([k,v])=>`${esc(k)} (${fN(v)})`).join(' · ')}</p>
+  </section>`;
+}
+function vAuto(p){
+  if(p.auto.wings)return vAutoWings(p);
+  const a=p.auto,isV=p.kind==='ventas';
+  const units=isV?a.raw.reduce((s,r)=>s+num(r.qty),0):a.rows.reduce((s,r)=>s+r[2],0);
+  const val=isV?0:a.rows.reduce((s,r)=>s+r[2]*(r[3]||0),0);
+  const codes=isV?new Set(a.raw.map(r=>norm(r.code))).size:a.rows.length;
+  const prev=isV?a.raw.slice(0,6).map(r=>[r.code,r.orig,r.desc,r.qty,r.prov]):a.rows.slice(0,6).map(r=>[r[0],r[5],r[1],r[2],f$(r[3]),r[4]]);
+  const oc={};(isV?a.raw.map(r=>[r.orig,num(r.qty)]):a.rows.map(r=>[r[5],r[2]])).forEach(([o,q])=>oc[o||'?']=(oc[o||'?']||0)+q);
+  const head=isV?['Código','Origen','Descripción','Unidades','Proveedor']:['Código','Origen','Descripción','Stock','Cto. rep.','Actividad'];
+  const ford=isV?Object.entries(a.provTot).filter(([k])=>/FORD/i.test(k)).reduce((s,[,v])=>s+v,0):0;
+  return `<section class="panel" id="mapPanel"><div class="panel-h"><div><h2>Informe de Autologica · ${isV?'Ventas':'Stock a costo'}</h2><p class="sub">${esc(p.fileName)}. Se reconoció el formato; revisá el resumen y confirmá.</p></div>
+    <div class="toolbar"><button class="btn" data-act="cancelMap">Cancelar</button><button class="btn pri" data-act="confirmMap"${S.busy?' disabled':''}>${S.busy?'Guardando…':'Confirmar y guardar'}</button></div></div>
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile"><div class="l">${isV?'Ventas':'Stock al'}</div><div class="v" style="font-size:18px">${isV?'Total por código':fD(a.fecha)}</div><div class="n">${isV?`se divide por ${S.P.dias} días hábiles (Parámetros)`:''}</div></div>
+      <div class="tile"><div class="l">Sucursal Autologica</div><div class="v" style="font-size:18px">${esc(a.suc||'–')}</div></div>
+      <div class="tile"><div class="l">Códigos</div><div class="v">${fN(codes)}</div></div>
+      <div class="tile"><div class="l">Unidades</div><div class="v">${fN(units,1)}</div><div class="n">N original ${fN(oc.N||0)} · P nacional ${fN(oc.P||0)}</div></div>
+      ${isV?'':`<div class="tile"><div class="l">Valorizado a costo</div><div class="v">${fM(val)}</div></div>`}
+    </div>
+    <div class="map"><label>Guardar en la sucursal<select id="autoSuc">${S.sucs.map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select><small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
+    <h3 style="margin:14px 0 8px">Primeras filas</h3>
+    <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  </section>`;
+}
+function vMapping(p){
+  if(p.auto)return vAuto(p);
+  const o=KINDS[p.kind],aoa=p.aoa,hdr=aoa[p.h]||[];
+  const colOpts=sel=>`<option value="-1">—</option>`+hdr.map((c,i)=>`<option value="${i}"${i===sel?' selected':''}>${esc(colName(i))} · ${esc(c==null?'(vacía)':String(c).slice(0,40))}</option>`).join('');
+  const prev=aoa.slice(p.h+1,p.h+6);
+  return `<section class="panel" id="mapPanel"><div class="panel-h"><div><h2>Revisar columnas · ${o.t}</h2><p class="sub">${esc(p.fileName)} · ${fN(aoa.length-p.h-1)} filas de datos.</p></div>
+    <div class="toolbar"><button class="btn" data-act="cancelMap">Cancelar</button><button class="btn pri" data-act="confirmMap"${S.busy?' disabled':''}>${S.busy?'Guardando…':'Confirmar y guardar'}</button></div></div>
+    <div class="map">
+      ${p.sheets.length>1?`<label>Hoja<select id="mapSheet">${p.sheets.map(s=>`<option${s===p.sheet?' selected':''}>${esc(s)}</option>`).join('')}</select></label>`:''}
+      <label>Fila de encabezados<input type="number" id="mapHdr" min="1" value="${p.h+1}"></label>
+      ${o.f.map(([key,label,,req])=>`<label>${label}${req?' *':''}<select data-map="${key}">${colOpts(p.map[key])}</select></label>`).join('')}
+      ${p.kind==='stock'?`<label>Fecha del stock<input type="date" id="stFecha" value="${p.fecha||''}"></label><label>Sucursal<input type="text" value="${esc(S.P.sucursal)}" disabled></label>`:''}
+    </div>
+    <h3 style="margin:14px 0 8px">Vista previa</h3>
+    <div class="tw" style="max-height:none"><table><thead><tr>${o.f.map(([k,l])=>`<th>${l}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${o.f.map(([k])=>`<td>${p.map[k]>=0?esc(fmtCell(r[p.map[k]])):'<span class="faint">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  </section>`;
+}
+const colName=i=>{let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s};
+const fmtCell=v=>v instanceof Date?v.toLocaleDateString('es-AR'):v==null?'':String(v);
+
+async function readFile(kind,file){
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array',cellDates:true});
+  const sheet=pickSheet(kind,wb);
+  S.pending={kind,wb,fileName:file.name,sheets:wb.SheetNames,sheet};
+  setSheet(sheet);
+}
+function pickSheet(kind,wb){
+  const names=wb.SheetNames;const pref={ventas:/venta/i,stock:/stock/i,wings:/wings/i,oq:/^oq$/i,ddp:/ddp/i}[kind];
+  return names.find(n=>pref.test(n))||names[0];
+}
+function setSheet(name){
+  const p=S.pending;p.sheet=name;
+  p.aoa=XLSX.utils.sheet_to_json(p.wb.Sheets[name],{header:1,raw:true,defval:null,blankrows:false});
+  p.auto=null;const wh=detectWings(p.aoa);
+  if(wh>=0){p.kind='wings';const pw=parseWings(p.aoa,wh);const emp=Object.keys(pw.emp).sort((a,b)=>pw.emp[b]-pw.emp[a])[0]||'';
+    p.auto=Object.assign({wings:true,empresa:emp,agg:aggWings(pw.raw)},pw);p.sucApp=S.sucMap['WINGS '+emp]||S.P.sucursal;
+    render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
+  const ak=detectAutologica(p.aoa);
+  if(ak){if(ak!==p.kind){toast(`Este archivo es el informe de ${ak==='ventas'?'ventas':'stock'} de Autologica: se carga como ${ak==='ventas'?'ventas':'stock'}.`);p.kind=ak}
+    p.auto=ak==='ventas'?parseAutologicaVentas(p.aoa):parseAutologicaStock(p.aoa);p.sucApp=(p.auto.suc&&S.sucMap[p.auto.suc])||S.P.sucursal;
+    render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
+  p.h=detectHeader(p.kind,p.aoa);autoMap();
+  if(p.kind==='stock'){const hdr=(p.aoa[p.h]||[]).join(' ');const m=hdr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);p.fecha=m?`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:new Date().toISOString().slice(0,10)}
+  render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);
+}
+function detectHeader(kind,aoa){
+  const pats=KINDS[kind].f.flatMap(f=>f[2]);let best=0,bs=-1;
+  for(let i=0;i<Math.min(40,aoa.length);i++){const r=aoa[i]||[];let s=0;for(const c of r){if(c==null)continue;const t=String(c).trim().toLowerCase();if(pats.some(p=>p.test(t)))s++}if(s>bs){bs=s;best=i}}
+  if(kind==='ddp'||bs<=0)return 0;return best;
+}
+function autoMap(){
+  const p=S.pending,hdr=(p.aoa[p.h]||[]).map(c=>c==null?'':String(c).trim().toLowerCase());const used=new Set();p.map={};
+  if(p.kind==='ddp'){
+    const rows=p.aoa.slice(p.h+1,p.h+300),n=hdr.length||Math.max(...rows.map(r=>r.length));let flag=-1,fc=0,code=-1,cc=-1;
+    for(let i=0;i<n;i++){let f=0,c=0;for(const r of rows){const v=r[i];if(v==null)continue;const s=String(v).trim();if(/^[DNS]$/.test(s))f++;if(s.includes('/')&&!/\S\s+\S/.test(s))c++}if(f>fc){fc=f;flag=i}if(c>cc){cc=c;code=i}}
+    p.map={code,flag};return}
+  for(const [key,,pats,,mode] of KINDS[p.kind].f){let found=-1;
+    for(const re of pats){const idx=hdr.map((h,i)=>re.test(h)&&!used.has(i)?i:-1).filter(i=>i>=0);if(idx.length){found=mode==='last'?idx[idx.length-1]:idx[0];break}}
+    p.map[key]=found;if(found>=0)used.add(found)}
+}
+async function confirmAutoWings(p){
+  const a=p.auto,sel=($('#autoSuc')&&$('#autoSuc').value)||p.sucApp;const targets=sel==='__all'?S.sucs.slice():[sel];
+  S.sucMap['WINGS '+a.empresa]=sel;saveSucs();S.busy=true;render();
+  try{for(const s of targets)await saveDataset('wings',Object.assign({fileName:p.fileName,empresa:a.empresa},a.agg.meta),a.agg.rows,s);
+    toast(`Wings guardado en ${targets.join(' y ')}: ${fN(a.agg.rows.length)} piezas con pedidos.`);S.pending=null}
+  catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
+  S.busy=false;recompute();render();
+}
+async function confirmAuto(p){
+  if(p.auto.wings)return confirmAutoWings(p);
+  const a=p.auto,suc=(($('#autoSuc')&&$('#autoSuc').value)||p.sucApp||S.P.sucursal).trim();
+  if(a.suc&&S.sucMap[a.suc]!==suc){S.sucMap[a.suc]=suc;saveSucs()}
+  S.busy=true;render();
+  try{
+    if(p.kind==='ventas'){
+      const g=aggVentas(a.raw.map(r=>Object.assign({},r,{suc})));
+      if(!g.rows.length)throw new Error('el informe no tiene filas de ventas');
+      await saveDataset('ventas',{fileName:p.fileName,sucursales:g.sucursales,meses:g.meses,lineas:a.raw.length,desde:a.desde,hasta:a.hasta,fuente:'Autologica',sucOrigen:a.suc,provTot:a.provTot},g.rows,suc);
+      if(suc!==S.P.sucursal)await useSuc(suc);saveParams();
+      toast(`Ventas guardadas: ${fN(g.rows.length)} códigos. Se dividen por ${S.P.dias} días hábiles.`);
+    }else{
+      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc},a.rows,suc);
+      if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
+    }
+    S.pending=null;
+  }catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
+  S.busy=false;recompute();render();
+}
+async function confirmMap(){
+  if(S.pending&&S.pending.auto)return confirmAuto(S.pending);
+  const p=S.pending,o=KINDS[p.kind],m=p.map;
+  const miss=o.f.filter(f=>f[3]&&!(m[f[0]]>=0)).map(f=>f[1]);
+  if(p.kind==='ventas'&&!(m.qty>=0))miss.push('Cantidad');
+  if(miss.length){toast('Falta elegir la columna: '+[...new Set(miss)].join(', '));return}
+  const data=p.aoa.slice(p.h+1);const g=(r,k)=>m[k]>=0?r[m[k]]:null;
+  S.busy=true;render();
+  try{
+    if(p.kind==='ventas'){
+      const a=aggVentas(data.map(r=>({code:g(r,'code'),desc:g(r,'desc'),qty:g(r,'qty'),suc:g(r,'suc'),mes:g(r,'mes'),fecha:g(r,'fecha'),fam:g(r,'fam')})));
+      if(!a.rows.length)throw new Error('no se encontraron filas con código y cantidad');
+      await saveDataset('ventas',{fileName:p.fileName,sucursales:a.sucursales,meses:a.meses,lineas:data.length},a.rows);
+      const nm=a.meses.filter(x=>/^\d{4}-\d{2}$/.test(x)).length;
+      if(nm>0&&nm*20!==S.P.dias){S.P.dias=nm*20;toast(`Ventas guardadas. Días hábiles ajustados a ${nm} meses × 20 = ${S.P.dias}.`)}else toast(`Ventas guardadas: ${fN(a.rows.length)} combinaciones pieza/mes.`);
+      saveParams();
+    }else if(p.kind==='stock'){
+      const map=new Map();for(const r of data){const c=norm(g(r,'code'));if(!c)continue;const e=map.get(c);const q=num(g(r,'qty'));const cv=g(r,'cost');const cost=cv==null||cv===''?null:num(cv);
+        if(e){e[2]+=q;if(e[3]==null)e[3]=cost}else map.set(c,[c,String(g(r,'desc')||'').trim(),q,cost])}
+      const fecha=($('#stFecha')&&$('#stFecha').value)||p.fecha;const suc=S.P.sucursal;
+      await saveDataset('stock',{fileName:p.fileName,fecha,sucursal:suc},[...map.values()]);
+      S.finals={};saveDraft();toast(`Stock guardado: ${fN(map.size)} piezas.`);
+    }else if(p.kind==='wings'){
+      const w=aggWings(data.map(r=>({fecha:g(r,'fecha'),codPed:g(r,'codPed'),qPed:g(r,'qPed'),codFac:g(r,'codFac'),qFac:g(r,'qFac'),estado:g(r,'estado')})));
+      await saveDataset('wings',Object.assign({fileName:p.fileName},w.meta),w.rows);toast(`Wings guardado: ${fN(w.rows.length)} piezas con pedidos.`);
+    }else if(p.kind==='oq'){
+      const rows=[];for(const r of data){const c=norm(g(r,'code'));const u=num(g(r,'unit'));if(c&&u>1)rows.push([c,u])}
+      await saveDataset('oq',{fileName:p.fileName},rows);toast(`Order units guardados: ${fN(rows.length)} piezas con unidad mayor a 1.`);
+    }else if(p.kind==='ddp'){
+      const rows=[];for(const r of data){const c=norm(g(r,'code'));if(c&&String(g(r,'flag')||'').trim().toUpperCase()==='D')rows.push([c])}
+      await saveDataset('ddp',{fileName:p.fileName},rows);toast(`DDP guardado: ${fN(rows.length)} piezas marcadas D.`);
+    }
+    S.pending=null;
+  }catch(e){toast('No se pudo cargar: '+(e.message||e.code))}
+  S.busy=false;recompute();render();
+}
+
+/* ---------- Vista: Parámetros ---------- */
+function vParams(){
+  const P=S.P;const fams=[...new Set([...(S.res.fams||[]),...(P.exclFam||[])])].sort();
+  const n=(id,l,h,step=1)=>`<label for="p_${id}">${l}<input type="number" id="p_${id}" data-p="${id}" step="${step}" min="0" value="${P[id]}"><small>${h}</small></label>`;
+  return `<section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
+    <button class="btn" data-act="resetParams">Volver a los valores del Excel</button></div>
+    <div class="formula">MAD = venta del período ÷ días hábiles × 20<br>Std stock = ⌈ MAD × (ciclo + lead time + SS) ÷ 20 ⌉<br>Sugerido = ⌈ (Std stock − stock − pendientes) ÷ order unit ⌉ × order unit</div>
+    <div class="params" style="margin-top:14px">
+      ${n('oc','Ciclo de orden (días)','Cada cuántos días hábiles pedís')}
+      ${n('ltNormal','Lead time pieza normal (días)','Demora de Ford')}
+      ${n('ltDDP','Lead time pieza DDP (días)','Para piezas marcadas D')}
+      ${n('ss','Stock de seguridad (días)','Colchón ante variaciones')}
+      ${n('dias','Días hábiles del período de ventas','6 meses × 20 = 120')}
+      ${n('minStd','Mínimo de unidades para candidato','Venta del período mayor a este valor')}
+      ${n('tope','Tope por línea (unidades)','0 = sin tope. En el Excel era 10')}
+      ${n('excesoPct','Exceso a partir de (% sobre el ideal)','Para marcar piezas con exceso')}
+    </div></section>
+  <div class="grid2">
+  <section class="panel"><h3>Sucursales</h3><p class="sub" style="margin-bottom:10px">Cada sucursal guarda sus propias ventas, stock, pedidos Wings, estándar y pedidos. Los parámetros, las piezas DDP y las order units son comunes.</p>
+    <div style="display:grid;gap:6px;margin-bottom:10px">${S.sucs.map(s=>`<div class="toolbar"><b style="flex:1">${esc(s)}</b><span class="faint">${Object.entries(S.sucMap).filter(([,v])=>v===s).map(([k])=>'Autologica: '+esc(k)).join(', ')}</span>${S.sucs.length>1?`<button class="btn sm" data-act="rmSuc" data-suc="${esc(s)}">Quitar de la lista</button>`:''}</div>`).join('')}</div>
+    <form id="addSuc" class="toolbar"><input type="text" id="newSuc" placeholder="Nombre de la sucursal"><button class="btn" type="submit">Agregar</button></form></section>
+  ${window.__LOCAL?`<section class="panel"><h3>Respaldo de datos</h3><p class="sub" style="margin-bottom:10px">Los datos se guardan en Supabase. El respaldo sirve para tener una copia aparte; Restaurar reemplaza todos los datos guardados.</p>
+    <div class="toolbar"><button class="btn" data-act="backup">Descargar respaldo</button><label class="btn file">Restaurar respaldo<input type="file" accept=".json" id="restoreFile"></label></div></section>`:''}
+  <section class="panel"><h3>Qué descontar del faltante</h3><p class="sub" style="margin-bottom:10px">Pedidos a Ford que ya están en camino o trabados (requiere cargar Wings).</p>
+    <div class="checks" style="flex-direction:column">${[['subBO','BO físico (estado 40): Ford no tiene la pieza, no se vuelve a pedir'],['subProc','En proceso (10, 20, 25, 43, 44, 58)'],['subOD','OD diferido (estado 50): por defecto se sigue pidiendo']].map(([k,t])=>`<label><input type="checkbox" data-pc="${k}"${P[k]?' checked':''}> ${t}</label>`).join('')}</div></section>
+  <section class="panel"><h3>Rubros excluidos de los candidatos</h3><p class="sub" style="margin-bottom:10px">El rubro se asigna por la descripción de la pieza. Los rubros marcados no se sugieren para el estándar.</p>
+    <div class="checks">${fams.length?fams.map(f=>`<label><input type="checkbox" data-fam="${esc(f)}"${(P.exclFam||[]).includes(f)?' checked':''}> ${esc(f)}</label>`).join(''):'<span class="faint">Cargá ventas con familia para ver la lista.</span>'}</div></section>
+  </div>`;
+}
+
+/* ---------- Exportaciones ---------- */
+async function exportXlsx(filename,sheets){
+  if(!dl){toast('La descarga no está disponible en esta vista.');return}
+  const wb=XLSX.utils.book_new();
+  for(const s of sheets){const ws=XLSX.utils.aoa_to_sheet(s.rows);ws['!cols']=s.rows[0].map((h,i)=>({wch:Math.min(48,Math.max(8,...s.rows.slice(0,200).map(r=>String(r[i]==null?'':r[i]).length+1)))}));XLSX.utils.book_append_sheet(wb,ws,s.name.slice(0,31))}
+  const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+  try{await dl.save({filename,data:new Blob([buf])})}catch(e){if(e&&e.code!=='declined')toast('No se pudo descargar: '+(e.message||e.code))}
+}
+const r2=x=>Math.round(x*100)/100;
+function sugSheet(L){return [['Código','Origen','Descripción','Rubro','Order unit','DDP','Venta período','MAD','Std stock','Stock','Dif (std-stock)','BO físico','OD','En proceso','Cupo OD','Sugerido','Pedido final','Cto. rep.','$ pedido','Observaciones'],
+  ...L.map(l=>{const f=finalOf(l);return [l.code,l.orig,l.desc,l.fam,l.ou,l.ddp?'D':'',l.q6,r2(l.mad),l.stdQty,l.st,l.dif,l.bo,l.od,l.proc,l.cupoOD,l.sug,f,l.cost,r2(f*(l.cost||0)),[l.topado&&'tope por línea',l.odFlag&&'supera cupo OD',!l.enStock&&'sin fila de stock',l.enStock&&l.cost==null&&'sin costo'].filter(Boolean).join('; ')]})]}
+function stdSheet(){return [['Estado','Código','Descripción','Rubro','Venta período','MAD','Lead time','Ideal','Stock','Meses stock','$ ideal','$ actual'],...S.res.lines.filter(l=>l.inStd).map(l=>[EST[l.estado][0],l.code,l.desc,l.fam,l.q6,r2(l.mad),l.lt,l.stdQty,l.st,l.mad?r2(l.st/l.mad):'',r2(l.stdQty*(l.cost||0)),r2(Math.max(0,l.st)*(l.cost||0))])]}
+const stamp=()=>new Date().toISOString().slice(0,10);
+const fDate=d=>`${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+async function saveCsv(suc,date,pairs){
+  if(!pairs.length){toast('No hay piezas para pedir.');return}
+  if(!dl){toast('La descarga no está disponible en esta vista.');return}
+  const csv='codigo,cantidad\r\n'+pairs.map(([c,q])=>`${c},${Math.round(q)}`).join('\r\n')+'\r\n';
+  const filename=`${suc} ${fDate(date)}.csv`.replace(/[\\/:*?"<>|]/g,'-');
+  try{await dl.save({filename,data:csv});toast(`${filename}: ${pairs.length} piezas.`)}catch(e){if(e&&e.code!=='declined')toast('No se pudo descargar: '+(e.message||e.code))}
+}
+function exportCsv(){saveCsv(stdKey(),new Date(),S.res.lines.filter(l=>finalOf(l)>0).sort((a,b)=>a.code.localeCompare(b.code)).map(l=>[l.code,finalOf(l)]))}
+function exportSavedCsv(){const x=S.saved.find(s=>s.id===S.ui.openSaved);if(!x)return;let L=[];try{L=JSON.parse(x.lines)}catch(e){}saveCsv(x.sucursal,new Date(x.fecha),L.filter(r=>r[5]>0).map(r=>[r[0],r[5]]))}
+function exportSug(){const L=S.res.lines.filter(l=>finalOf(l)>0||l.sug>0).sort((a,b)=>a.code.localeCompare(b.code));exportXlsx(`Pedido sugerido ${stdKey()} ${stamp()}.xlsx`,[{name:'Pedido',rows:sugSheet(L)},{name:'Todo el estandar',rows:sugSheet(S.res.lines.filter(l=>l.inStd))}])}
+function exportInf(){const K=S.K,G=K.grupos,P=S.P;
+  const res=[['Análisis de stock',stdKey()],['Stock al',S.D.stock&&S.D.stock.meta.fecha],[],['Grupo','$ stock','Partes','Unidades','MDI'],
+    ...[['Estándar stock',G.std],['Con venta fuera del estándar',G.venta],['Sin venta en el período',G.sinventa]].map(([t,g])=>[t,r2(g.$),g.p,r2(g.u),g.dem$?r2(g.$/g.dem$):'']),['Total',r2(K.stock$),K.stockP,r2(K.stockU),K.dem$?r2(K.stock$/K.dem$):''],[],
+    ['Demanda mensual $',r2(K.dem$)],['Estándar ideal $',r2(K.std.ideal$)],['Estándar actual $',r2(K.std.act$)],['Faltante al ideal $',r2(K.std.gap$)],...Object.keys(EST).map(k=>['Std '+EST[k][0],K.std[k]]),[],
+    ['Parámetros'],['Ciclo de orden',P.oc],['Lead time normal',P.ltNormal],['Lead time DDP',P.ltDDP],['Stock de seguridad',P.ss],['Días hábiles',P.dias],[],['Ventas por mes'],...S.res.meses.map((m,i)=>[m,S.res.monthTotals[i]])];
+  const inm=[['Código','Descripción','Stock','Cto. rep.','$ stock'],...S.res.lines.filter(l=>!l.q6&&l.st>0).sort((a,b)=>b.st*(b.cost||0)-a.st*(a.cost||0)).map(l=>[l.code,l.desc,l.st,l.cost,r2(l.st*(l.cost||0))])];
+  exportXlsx(`Informe stock ${stdKey()} ${stamp()}.xlsx`,[{name:'Resumen',rows:res},{name:'Estandar',rows:stdSheet()},{name:'Pedido',rows:sugSheet(S.res.lines.filter(l=>finalOf(l)>0))},{name:'Sin venta',rows:inm}])}
+function exportSaved(){const x=S.saved.find(s=>s.id===S.ui.openSaved);if(!x)return;let L=[];try{L=JSON.parse(x.lines)}catch(e){}
+  exportXlsx(`${x.nombre}.xlsx`.replace(/[\\/:*?"<>|]/g,'-'),[{name:'Pedido',rows:[['Código','Descripción','Stock','Std stock','Sugerido','Pedido final','Cto. rep.','$ pedido','Order unit','BO','OD','En proceso','MAD'],...L.map(r=>[r[0],r[1],r[2],r[3],r[4],r[5],r[6],r2(r[5]*(r[6]||0)),r[7],r[8],r[9],r[10],r[11]])]}])}
+
+async function saveSug(name){
+  if(!db){toast('El guardado no está disponible en esta vista.');return}
+  const L=S.res.lines.filter(l=>finalOf(l)>0||l.sug>0).sort((a,b)=>a.code.localeCompare(b.code));
+  if(!L.length){toast('No hay líneas para guardar.');return}
+  const lines=L.map(l=>[l.code,l.desc,l.st,l.stdQty,l.sug,finalOf(l),l.cost,l.ou,l.bo,l.od,l.proc,r2(l.mad)]);
+  const K=S.K.ped;
+  try{await db.collection('sugeridos').add({nombre:name||'Pedido',fecha:new Date().toISOString(),sucursal:stdKey(),estado:'Borrador',stockFecha:S.D.stock?S.D.stock.meta.fecha:null,params:S.P,resumen:{lineas:K.lineas,u:K.u,monto:r2(K.$)},lines:JSON.stringify(lines)});
+    S.ui.saveOpen=false;toast('Sugerido guardado en el historial.');render()}catch(e){toast(e.code==='quota_exceeded'?'Se llenó el espacio: eliminá sugeridos viejos del historial.':'No se pudo guardar: '+(e.message||e.code))}
+}
+
+/* ---------- Eventos ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd]');if(!t)return;
+  const u=S.ui;
+  if(t.dataset.tab){S.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
+  if(t.dataset.view){u.view=t.dataset.view;u.sort=u.view==='pedir'?'$':'code';u.dir=u.view==='pedir'?-1:1;render();return}
+  if(t.dataset.sort){const k=t.dataset.sort;if(u.sort===k)u.dir*=-1;else{u.sort=k;u.dir=['code','desc'].includes(k)?1:-1}render();return}
+  if(t.dataset.open){u.openSaved=u.openSaved===t.dataset.open?null:t.dataset.open;u.confirmDel=null;render();return}
+  if(t.dataset.addstd){const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),t.dataset.addstd])];saveStd();recompute();render();return}
+  if(t.dataset.rmstd){const k=stdKey();S.stdBy[k]=(S.stdBy[k]||[]).filter(c=>c!==t.dataset.rmstd);saveStd();recompute();render();toast(t.dataset.rmstd+' quitada del estándar');return}
+  const a=t.dataset.act;
+  if(a==='openSave'){u.saveOpen=true;render();const i=$('#saveName');i&&i.select();}
+  else if(a==='closeSave'){u.saveOpen=false;render()}
+  else if(a==='resetFin'){S.finals={};saveDraft();recompute();render()}
+  else if(a==='exportSug')exportSug();
+  else if(a==='exportCsv')exportCsv();
+  else if(a==='backup'){dl&&dl.save({filename:`Respaldo Estandar Stock ${fDate(new Date())}.json`,data:window.__backup()}).then(()=>toast('Respaldo descargado.'))}
+  else if(a==='exportSavedCsv')exportSavedCsv();
+  else if(a==='exportStd')exportXlsx(`Estandar stock ${stdKey()} ${stamp()}.xlsx`,[{name:'Estandar',rows:stdSheet()}]);
+  else if(a==='exportInf')exportInf();
+  else if(a==='exportSaved')exportSaved();
+  else if(a==='askDel'){u.confirmDel=u.openSaved;render()}
+  else if(a==='noDel'){u.confirmDel=null;render()}
+  else if(a==='delSaved'){const id=u.confirmDel;u.confirmDel=null;u.openSaved=null;db&&db.doc('sugeridos/'+id).delete().then(()=>toast('Pedido eliminado.')).catch(e=>toast('No se pudo eliminar: '+(e.message||e.code)))}
+  else if(a==='addAllCand'){const k=stdKey();const add=S.res.lines.filter(l=>l.cand).map(l=>l.code);S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),...add])];saveStd();recompute();render();toast(`${add.length} piezas agregadas al estándar.`)}
+  else if(a==='cancelMap'){S.pending=null;render()}
+  else if(a==='wingsBase'){(async()=>{try{const suc=S.P.sucursal;await deleteDataset(dsName('wings',suc));if(S.cache[suc])S.cache[suc].wings=null;S.D.wings=wingsFor(suc,S.cache[suc]||{});recompute();render();toast(S.D.wings?'Se usan otra vez los pedidos Wings del Excel base.':'Pedidos Wings borrados para '+suc+'.')}catch(e){toast('No se pudo: '+(e.message||e.code))}})()}
+  else if(a==='copyStd'){const from=t.dataset.from;S.stdBy[stdKey()]=[...(S.stdBy[from]||[])];saveStd();recompute();render();toast(`Se copiaron ${S.stdBy[stdKey()].length} piezas del estándar de ${from}.`)}
+  else if(a==='rmSuc'){const s=t.dataset.suc;if(S.sucs.length<2)return;S.sucs=S.sucs.filter(x=>x!==s);saveSucs();if(S.P.sucursal===s)switchSuc(S.sucs[0]);else render()}
+  else if(a==='confirmMap')confirmMap();
+  else if(a==='resetParams'){S.P=Object.assign({},DEFAULT_PARAMS,{sucursal:S.P.sucursal});saveParams();recompute();render()}
+});
+let qT;
+document.addEventListener('input',e=>{
+  const t=e.target,u=S.ui;
+  if(t.id==='q'||t.id==='stdQ'||t.id==='candQ'){u[t.id]=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=document.getElementById(t.id);if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
+  if(t.dataset.fin){const l=S.byCode.get(t.dataset.fin);let v=Math.max(0,num(t.value));if(v===l.sug)delete S.finals[l.code];else S.finals[l.code]=v;t.classList.toggle('chg',S.finals[l.code]!=null);
+    const c=document.querySelector(`[data-tot="${CSS.escape(l.code)}"]`);if(c)c.textContent=v?f$(v*(l.cost||0)):'';updateTotals();saveDraft();return}
+  if(t.dataset.p){const v=num(t.value);S.P[t.dataset.p]=v;saveParams();recompute();return}
+});
+document.addEventListener('change',e=>{
+  const t=e.target,u=S.ui;
+  if(t.id==='restoreFile'){const f=t.files[0];t.value='';if(!f)return;f.text().then(window.__restore).then(()=>{toast('Respaldo restaurado. Recargando…');setTimeout(()=>location.reload(),800)}).catch(e=>toast('No se pudo restaurar: '+e.message));return}
+  if(t.dataset.file){const f=t.files[0];t.value='';if(f)readFile(t.dataset.file,f).catch(err=>toast('No se pudo leer el archivo: '+err.message));return}
+  if(t.id==='sucSel'){if(t.value==='__add'){t.value=S.P.sucursal;S.tab='params';render();setTimeout(()=>{const i=$('#newSuc');i&&(i.scrollIntoView({block:'center'}),i.focus())},50);return}switchSuc(t.value);return}
+  if(t.id==='origSel'){S.P.origen=t.value;saveParams();recompute();render();toast(t.value?`Mostrando solo origen ${t.value==='N'?'N · Original':'P · Nacional'}`:'Mostrando todos los orígenes');return}
+  if(t.id==='fam'){u.fam=t.value;render();return}
+  if(t.id==='stdEst'){u.stdEst=t.value;render();return}
+  if(t.id==='mapSheet'){setSheet(t.value);return}
+  if(t.id==='mapHdr'){S.pending.h=Math.max(0,num(t.value)-1);autoMap();render();return}
+  if(t.dataset.map){S.pending.map[t.dataset.map]=+t.value;render();return}
+  if(t.dataset.pc){S.P[t.dataset.pc]=t.checked;saveParams();recompute();return}
+  if(t.dataset.fam){const s=new Set(S.P.exclFam||[]);t.checked?s.add(t.dataset.fam):s.delete(t.dataset.fam);S.P.exclFam=[...s];saveParams();recompute();return}
+  if(t.dataset.p){render();return}
+  if(t.id==='estSel'){db&&db.doc('sugeridos/'+t.dataset.id).update({estado:t.value}).catch(e=>toast('No se pudo actualizar: '+(e.message||e.code)));return}
+});
+document.addEventListener('submit',e=>{
+  e.preventDefault();
+  if(e.target.id==='saveForm'){saveSug($('#saveName').value.trim())}
+  if(e.target.id==='addSuc'){const n=$('#newSuc').value.trim();if(!n)return;if(S.sucs.some(s=>slug(s)===slug(n))){toast('Esa sucursal ya existe.');return}S.sucs.push(n);saveSucs();switchSuc(n);toast(n+' agregada. Cargá sus ventas y stock en Cargar datos.')}
+  if(e.target.id==='addStd'){const c=norm($('#addCode').value);if(!c)return;const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),c])];saveStd();recompute();render();toast(c+' agregada al estándar'+(S.byCode.get(c)&&S.byCode.get(c).enStock?'':' (no figura en stock ni ventas)'))}
+});
+boot();
+</script>
+</body></html>
