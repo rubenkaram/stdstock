@@ -1,0 +1,2 @@
+# stdstock
+Sistema de StandarStock
