@@ -2,7 +2,20 @@
 window.__LOCAL = true; // habilita Respaldo en Parámetros
 (function () {
   const cfg = window.APP_CONFIG || {};
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  function fatal(msg) {
+    const show = () => { const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:var(--bg);padding:16px';
+      el.innerHTML = `<div style="max-width:520px;background:var(--surface);color:var(--ink);border:2px solid var(--crit);border-radius:12px;padding:24px;display:grid;gap:10px;font-size:14px"><b style="font-size:17px">La página no se pudo conectar con Supabase</b><div>${msg}</div><div class="faint">No cargues datos hasta resolverlo: no se guardarían.</div></div>`;
+      document.body.appendChild(el); };
+    if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+    window.claude = { use: () => new Promise(() => {}) }; // la app queda esperando, sin trabajar en modo "sin guardado"
+  }
+  if (!window.APP_CONFIG || !/^https:\/\/.+\.supabase\.co/.test(String(cfg.SUPABASE_URL || '')) || !cfg.SUPABASE_ANON_KEY || /TU-/.test(cfg.SUPABASE_URL + cfg.SUPABASE_ANON_KEY)) {
+    fatal('El archivo <b>config.js</b> tiene un error o está incompleto. La URL y la clave van <b>entre comillas simples</b>, por ejemplo:<pre style="white-space:pre-wrap;font-size:12px;background:var(--surface2);padding:8px;border-radius:6px">SUPABASE_URL: \'https://abcd.supabase.co\',\nSUPABASE_ANON_KEY: \'sb_publishable_xxxx\'</pre>');
+    return;
+  }
+  if (!window.supabase || !window.supabase.createClient) { fatal('No se pudo descargar la librería de Supabase. Revisá la conexión a internet y recargá con Ctrl+F5.'); return; }
+  let sb; try { sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY); } catch (e) { fatal('Supabase rechazó la configuración: ' + e.message); return; }
   const mem = new Map(); const listeners = {};
   const err = e => ({ code: 'unavailable', message: (e && e.message) || String(e) });
   const notify = p => { const col = p.split('/').slice(0, -1).join('/'); (listeners[col] || []).forEach(f => f()); };
