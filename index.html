@@ -335,17 +335,18 @@ function aggVentas(raw) {
     const mes = mesKey(r.mes, r.fecha);
     let si = sucs.indexOf(suc); if (si < 0) { sucs.push(suc); si = sucs.length - 1; }
     let mi = meses.indexOf(mes); if (mi < 0) { meses.push(mes); mi = meses.length - 1; }
-    let inf = info.get(code);
-    if (!inf) { inf = [String(r.desc || '').trim(), '', {}, r.prov ? String(r.prov).trim() : '', r.orig ? String(r.orig).trim().toUpperCase() : '']; info.set(code, inf); }
+    const og = r.orig ? String(r.orig).trim().toUpperCase() : '', ck = code + '¦' + og;
+    let inf = info.get(ck);
+    if (!inf) { inf = [String(r.desc || '').trim(), '', {}, r.prov ? String(r.prov).trim() : '', og, code]; info.set(ck, inf); }
     if (!inf[0] && r.desc) inf[0] = String(r.desc).trim();
     const fm = String(r.fam || '').trim(); if (fm) inf[2][fm] = (inf[2][fm] || 0) + 1;
-    const k = code + '|' + si + '|' + mi; agg.set(k, (agg.get(k) || 0) + q);
+    const k = ck + '|' + si + '|' + mi; agg.set(k, (agg.get(k) || 0) + q);
   }
   const sorted = meses.slice().sort();
   const remap = meses.map(x => sorted.indexOf(x));
   for (const inf of info.values()) { let b = '', n = 0; for (const f in inf[2]) if (inf[2][f] > n) { n = inf[2][f]; b = f; } inf[1] = b; }
   const rows = [];
-  for (const [k, q] of agg) { const [c, s, m] = k.split('|'); const inf = info.get(c); rows.push([c, inf[0], inf[1], +s, remap[+m], Math.round(q * 1e4) / 1e4, inf[3], inf[4]]); }
+  for (const [k, q] of agg) { const [c, s, m] = k.split('|'); const inf = info.get(c); rows.push([inf[5], inf[0], inf[1], +s, remap[+m], Math.round(q * 1e4) / 1e4, inf[3], inf[4]]); }
   return { rows, sucursales: sucs, meses: sorted };
 }
 
@@ -383,10 +384,11 @@ function parseAutologicaStock(aoa) {
     const a = r[0];
     if (a != null && a !== '' && a !== '*' && typeof r[6] === 'number' && (typeof r[7] === 'number' || r[7] == null)) {
       const code = norm(a); if (!code) continue;
+      const og = String(r[1] || '').trim().toUpperCase(), ck = code + '¦' + og;
       const val = typeof r[8] === 'number' ? r[8] : (typeof r[7] === 'number' ? r[7] * r[6] : null);
-      const e = rows.get(code);
+      const e = rows.get(ck);
       if (e) { e[2] += r[6]; if (val != null) e[5] = (e[5] || 0) + val; }
-      else rows.set(code, [code, String(r[2] || '').trim(), r[6], null, String(r[5] || '').trim(), val, String(r[1] || '').trim().toUpperCase()]);
+      else rows.set(ck, [code, String(r[2] || '').trim(), r[6], null, String(r[5] || '').trim(), val, og]);
     }
   }
   for (const e of rows.values()) { e[3] = e[5] != null && e[2] > 0 ? Math.round(e[5] / e[2] * 100) / 100 : null; e[5] = e[6]; e.length = 6; }
@@ -472,15 +474,22 @@ function compute(D, std, P) {
   const monthTotals = meses.map(() => 0);
   if (D.ventas) for (const r of D.ventas.rows) {
     if (sucIdx >= 0 && r[3] !== sucIdx) continue;
+    if (P.origen && r[7] && r[7] !== P.origen) continue;
     let v = vent.get(r[0]); if (!v) { v = { desc: r[1], fam: r[2], q: 0, m: {}, prov: r[6] || '', orig: r[7] || '' }; vent.set(r[0], v); }
-    if (!v.fam && r[2]) v.fam = r[2]; if (!v.desc && r[1]) v.desc = r[1];
+    if (!v.fam && r[2]) v.fam = r[2]; if (!v.desc && r[1]) v.desc = r[1]; if (r[7] && v.orig && v.orig.indexOf(r[7]) < 0) v.orig += '+' + r[7]; else if (!v.orig) v.orig = r[7] || '';
+    if (r[7] === 'N' || !v.prov) v.prov = r[6] || v.prov;
     v.q += r[5]; v.m[r[4]] = (v.m[r[4]] || 0) + r[5]; monthTotals[r[4]] += r[5];
   }
 
-  const stock = new Map(); if (D.stock) for (const r of D.stock.rows) { const o = stock.get(r[0]); if (o) o.q += num(r[2]); else stock.set(r[0], { desc: r[1], q: num(r[2]), cost: r[3] == null || r[3] === '' ? null : num(r[3]), act: r[4] || '', orig: r[5] || '' }); }
+  const stock = new Map(); if (D.stock) for (const r of D.stock.rows) {
+    const og = r[5] || ''; if (P.origen && og && og !== P.origen) continue;
+    const q = num(r[2]), cost = r[3] == null || r[3] === '' ? null : num(r[3]); const o = stock.get(r[0]);
+    if (o) { if (cost != null && q > 0) { o.val += cost * q; o.vq += q; o.cost = o.val / o.vq; } o.q += q; if (og && o.orig.indexOf(og) < 0) o.orig += '+' + og; if (og === 'N') { o.desc = r[1]; o.act = r[4] || o.act; } }
+    else stock.set(r[0], { desc: r[1], q, cost, act: r[4] || '', orig: og, val: cost != null && q > 0 ? cost * q : 0, vq: cost != null && q > 0 ? q : 0 });
+  }
   const oq = new Map(); if (D.oq) for (const r of D.oq.rows) oq.set(r[0], num(r[1]) || 1);
   const ddp = new Set(); if (D.ddp) for (const r of D.ddp.rows) ddp.add(r[0]);
-  const wg = new Map(); if (D.wings) for (const r of D.wings.rows) wg.set(r[0], r);
+  const wg = new Map(); if (D.wings && P.origen !== 'P') for (const r of D.wings.rows) wg.set(r[0], r);
   const codes = new Set([...stock.keys(), ...std, ...vent.keys()]);
   const excl = new Set(P.exclFam || []);
   const lines = [];
@@ -634,7 +643,7 @@ async function useSuc(suc){
   S.D.ventas=o.ventas;S.D.stock=o.stock;S.D.wings=wingsFor(suc,o);
   S.finals=S.finalsBy[suc]||(S.finalsBy[suc]={});
 }
-const saveParams=()=>{if(ME()){try{localStorage.setItem('stdstock-suc',S.P.sucursal)}catch(e){}}if(isAdmin())queueWrite('config/params',()=>S.P)};
+const saveParams=()=>{if(ME()){try{localStorage.setItem('stdstock-suc',S.P.sucursal)}catch(e){}}if(isAdmin())queueWrite('config/params',()=>{const o=Object.assign({},S.P);delete o.origen;return o})};
 const saveStd=()=>queueWrite('config/std',()=>({bySuc:S.stdBy}));
 const saveSucs=()=>queueWrite('config/sucursales',()=>({list:S.sucs,map:S.sucMap}));
 const saveDraft=()=>{S.finalsBy[S.P.sucursal]=S.finals;queueWrite('config/draft',()=>({bySuc:JSON.stringify(S.finalsBy)}),1200)};
@@ -646,6 +655,7 @@ async function boot(){
   try{
     const [p,s,d,sc]=await Promise.all([db.doc('config/params').get(),db.doc('config/std').get(),db.doc('config/draft').get(),db.doc('config/sucursales').get()]);
     if(p.exists){S.P=Object.assign({},DEFAULT_PARAMS,p.data());if((S.P.exclFam||[]).some(f=>/^Oil /.test(f))){S.P.exclFam=DEFAULT_PARAMS.exclFam.slice();saveParams()}}
+    S.P.origen='N';
     if(s.exists)S.stdBy=Object.assign({},s.data().bySuc||{});
     if(d.exists){try{S.finalsBy=JSON.parse(d.data().bySuc||'{}')}catch(e){}}
     if(sc.exists){S.sucs=sc.data().list||S.sucs;S.sucMap=sc.data().map||{}}
@@ -683,9 +693,11 @@ function renderChips(){
   ch.push(c(!!D.stock,'Stock',D.stock?fD(D.stock.meta.fecha):'sin cargar'));
   ch.push(c(!!D.wings,'Wings',D.wings?(D.wings.meta.base?'Excel base, al ':'al ')+fD(D.wings.meta.hasta):'sin cargar'));
   ch.push(c(!!D.oq&&!!D.ddp,'DDP y order units',D.oq&&D.ddp?`${fN(D.ddp.meta.count)} DDP · ${fN(D.oq.meta.count)} OU`:'faltan cargar'));
+  const viejo=['ventas','stock'].filter(k=>D[k]&&D[k].meta.fuente==='Autologica'&&!D[k].meta.porOrigen);
+  if(viejo.length)ch.push(`<span class="chip" title="Se cargaron antes de separar N y P con el mismo código"><i class="dot warn"></i>Volvé a cargar <b>${viejo.join(' y ')}</b> de ${esc(S.P.sucursal)}</span>`);
   if(S.noDb)ch.push(`<span class="chip"><i class="dot warn"></i>Sin guardado: los datos se pierden al cerrar</span>`);
   $('#chips').innerHTML=ch.join('');
-  $('#origSel').value=S.P.origen||'';
+  $('#origSel').value=S.P.origen||'';$('#origSel').style.cssText=S.P.origen==='N'?'':'border-color:#d97706;background:#fff7ed;color:#9a3412';$('#origSel').title=S.P.origen==='N'?'Por defecto solo piezas N (Original)':'Atención: incluye piezas que no son N. Al volver a abrir la app vuelve a N.';
   const u=ME();$('#userBox').innerHTML=u?`<span class="chip" title="${u.admin?'Administrador: ve todas las sucursales':'Solo '+esc(u.sucursal)}"><b>${esc(u.email)}</b>${u.admin?' · admin':''}</span><button class="btn sm" data-act="logout">Salir</button>`:'';
   $('#sucSel').disabled=!isAdmin();
   $('#sucSel').innerHTML=(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+(isAdmin()?'<option value="__add">+ Agregar sucursal…</option>':'');
@@ -849,7 +861,7 @@ function vInf(){
 }
 const hasMonths=()=>S.res.meses.some((m,i)=>/^\d{4}-/.test(m)&&S.res.monthTotals[i]>0);
 function vProv(K){
-  const pt=(S.D.ventas&&S.D.ventas.meta.provTot)||{};const E=Object.entries(pt).sort((a,b)=>b[1]-a[1]);const tot=E.reduce((s,e)=>s+e[1],0)||1;const top=E.slice(0,8),rest=E.slice(8).reduce((s,e)=>s+e[1],0);
+  const pt={};for(const l of S.res.lines)if(l.q6>0){const k=l.prov||'(sin dato)';pt[k]=(pt[k]||0)+l.q6}const E=Object.entries(pt).sort((a,b)=>b[1]-a[1]);const tot=E.reduce((s,e)=>s+e[1],0)||1;const top=E.slice(0,8),rest=E.slice(8).reduce((s,e)=>s+e[1],0);
   return `<section class="panel"><h3 style="margin-bottom:4px">Ventas del período por proveedor</h3><p class="sub" style="margin-bottom:10px">${fN(K.ventaU)} u en ${fN(K.ventaItems)} códigos. ${fN(K.ventaSinStockItems)} de esos códigos (${fN(K.ventaSinStockU)} u) hoy no tienen stock. </p>
   ${E.length?`<div class="tw" style="max-height:none"><table><thead><tr><th>Proveedor</th><th class="n">Unidades</th><th class="n">%</th></tr></thead><tbody>${top.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${fN(v)}</td><td class="n">${fN(v/tot*100,1)} %</td></tr>`).join('')}${rest?`<tr><td class="faint">Otros ${E.length-8} proveedores</td><td class="n">${fN(rest)}</td><td class="n">${fN(rest/tot*100,1)} %</td></tr>`:''}</tbody></table></div>`:'<div class="empty">Sin datos de proveedor.</div>'}</section>`;
 }
@@ -1069,12 +1081,12 @@ async function confirmAuto(p){
     if(p.kind==='ventas'){
       const g=aggVentas(a.raw.map(r=>Object.assign({},r,{suc})));
       if(!g.rows.length)throw new Error('el informe no tiene filas de ventas');
-      await saveDataset('ventas',{fileName:p.fileName,sucursales:g.sucursales,meses:g.meses,lineas:a.raw.length,desde:a.desde,hasta:a.hasta,fuente:'Autologica',sucOrigen:a.suc,provTot:a.provTot},g.rows,suc);
+      await saveDataset('ventas',{fileName:p.fileName,sucursales:g.sucursales,meses:g.meses,lineas:a.raw.length,desde:a.desde,hasta:a.hasta,fuente:'Autologica',sucOrigen:a.suc,provTot:a.provTot,porOrigen:true},g.rows,suc);
       if(suc!==S.P.sucursal)await useSuc(suc);saveParams();
       logAct('Cargó ventas',`${p.fileName} · ${g.rows.length} códigos`,suc);
       toast(`Ventas guardadas: ${fN(g.rows.length)} códigos. Se dividen por ${S.P.dias} días hábiles.`);
     }else{
-      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc},a.rows,suc);
+      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);
       if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();logAct('Cargó stock',`${p.fileName} · ${a.rows.length} piezas al ${fD(a.fecha)}`,suc);toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
     }
     S.pending=null;
