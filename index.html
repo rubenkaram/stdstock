@@ -1322,6 +1322,10 @@ window.__LOCAL = true; // habilita Respaldo en Parámetros
     if (error) console.warn('No se pudo subir a Supabase Storage', error);
     return { status: 'saved' };
   } };
+  window.__store = {
+    put: async (path, blob) => { const { error } = await sb.storage.from('archivos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' }); if (error) throw err(error); },
+    get: async path => { const { data, error } = await sb.storage.from('archivos').download(path); if (error) { if (/not.?found|404|400/i.test(error.message || '') || error.statusCode == 404 || error.status == 400) return null; throw err(error); } return data; }
+  };
   window.__backup = () => JSON.stringify(Object.fromEntries(mem));
   function panel(html) {
     let el = document.getElementById('restoreBox');
@@ -1462,7 +1466,7 @@ function aggVentas(raw) {
 
 /* Informes de Autologica (exportación .xls de reportes) */
 function detectAutologica(aoa) {
-  const t = String((aoa[0] || [])[0] || '').trim().toLowerCase();
+  const t = ((aoa[0] || []).find(c => c != null && String(c).trim() !== '' && !/^emitido/i.test(String(c))) || '').toString().trim().toLowerCase();
   const src = aoa.slice(0, 5).map(r => (r || []).join(' ')).join(' ');
   if (!/autologica/i.test(src)) return null;
   if (t.startsWith('ventas de repuestos')) return 'ventas';
@@ -1529,38 +1533,48 @@ function parseFybExcel(aoa) {
 /* días hábiles del período de un informe (20 por mes) */
 function diasPeriodo(desde, hasta) { if (!desde || !hasta) return null; const d = (new Date(hasta) - new Date(desde)) / 864e5 + 1; return d > 0 ? Math.round(d / 30.44 * 20 * 10) / 10 : null; }
 function parseAutologicaStock(aoa) {
-  /* Stock a costo > Detallado. Puede traer varias sucursales y depósitos (filas "Sucursal:" y "Depósito:"):
-     se arma el stock de cada sucursal y una foto por depósito (para la evolución y la planilla por depósito). */
+  /* Stock a costo > Detallado o > Avanzado (con información de ventas). Puede traer varias sucursales y depósitos
+     (filas "Sucursal:" y "Depósito:"): arma el stock de cada sucursal y, por depósito, todas sus piezas
+     [código, origen, descripción, ubicación, stock, costo rep., stock a costo, precio lista, stock a precio, vendido 12m, rotación]. */
+  const head = aoa.slice(0, 8).map(r => (r || []).join(' ')).join(' ');
+  const av = /avanzado|informaci[oó]n de ventas/i.test(head);
+  const C = av ? { ubic: 3, act: -1, qty: 4, cost: 5, mon: 6, val: 7, pl: 8, pv: 9, v12: 13, rot: 16 } : { ubic: 4, act: 5, qty: 6, cost: 7, mon: 11, val: 8, pl: 9, pv: 10, v12: -1, rot: -1 };
   let suc = '', fecha = null, dep = null; const bySuc = new Map(), deps = new Map();
   const z = () => ({ items: 0, u: 0, costo: 0, precio: 0 });
+  const n_ = v => typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : null);
   for (const r of aoa) {
     if (!r) continue;
-    if (r[2] === 'Emitido:' && !fecha) fecha = dmy(r[3]);
+    const ie = r.indexOf('Emitido:'); if (ie >= 0 && !fecha) fecha = dmy(r[ie + 1]);
     if (r[1] === 'Sucursal:') { suc = String(r[3] || '').trim(); continue; }
     if (r[1] === 'Depósito:' || r[1] === 'Deposito:') { const c = String(r[2] == null ? '' : r[2]).trim(); dep = deps.get(c);
-      if (!dep) { dep = { codigo: c, nombre: String(r[3] || '').trim(), suc, N: z(), P: z(), T: z(), plan: [] }; deps.set(c, dep); } continue; }
-    const a = r[0];
-    if (a != null && a !== '' && a !== '*' && typeof r[6] === 'number' && (typeof r[7] === 'number' || r[7] == null)) {
+      if (!dep) { dep = { codigo: c, nombre: String(r[3] || '').trim(), suc, N: z(), P: z(), T: z(), rows: [] }; deps.set(c, dep); } continue; }
+    if (r[1] === 'Total depósito' || r[1] === 'Total deposito') { dep = null; continue; }
+    const a = r[0], q = r[C.qty];
+    if (a != null && a !== '' && a !== '*' && typeof q === 'number' && (typeof r[C.val] === 'number' || r[C.val] == null)) {
       const code = norm(a); if (!code) continue;
       const og = String(r[1] || '').trim().toUpperCase(), ck = code + '¦' + og;
-      const val = typeof r[8] === 'number' ? r[8] : (typeof r[7] === 'number' ? r[7] * r[6] : null);
+      const val = typeof r[C.val] === 'number' ? r[C.val] : (typeof r[C.cost] === 'number' ? r[C.cost] * q : null);
       let rows = bySuc.get(suc); if (!rows) { rows = new Map(); bySuc.set(suc, rows); }
       const e = rows.get(ck);
-      if (e) { e[2] += r[6]; if (val != null) e[5] = (e[5] || 0) + val; }
-      else rows.set(ck, [code, String(r[2] || '').trim(), r[6], null, String(r[5] || '').trim(), val, og]);
+      if (e) { e[2] += q; if (val != null) e[5] = (e[5] || 0) + val; }
+      else rows.set(ck, [code, String(r[2] || '').trim(), q, null, C.act >= 0 ? String(r[C.act] || '').trim() : '', val, og]);
       if (dep) {
-        const pv = typeof r[10] === 'number' ? r[10] : (typeof r[9] === 'number' ? r[9] * r[6] : 0);
-        for (const k of ['T', og === 'P' ? 'P' : og === 'N' ? 'N' : null]) if (k) { const m = dep[k]; if (r[6] > 0) m.items++; m.u += r[6]; m.costo += val || 0; m.precio += pv || 0; }
-        if (og !== 'P') dep.plan.push([String(a).trim(), og, String(r[2] || '').trim(), r[4] == null ? '' : String(r[4]).trim(), r[6], typeof r[9] === 'number' ? r[9] : '', '', val == null ? '' : val, typeof r[7] === 'number' ? r[7] : '', typeof r[10] === 'number' ? r[10] : '']);
+        const pv = typeof r[C.pv] === 'number' ? r[C.pv] : (typeof r[C.pl] === 'number' ? r[C.pl] * q : 0);
+        for (const k of ['T', og === 'P' ? 'P' : 'N']) { const m = dep[k]; if (q > 0) m.items++; m.u += q; m.costo += val || 0; m.precio += pv || 0; }
+        dep.rows.push([a, r[1] == null ? '' : r[1], r[2] == null ? '' : r[2], r[C.ubic] == null ? '' : r[C.ubic], q,
+          n_(r[C.cost]), val, n_(r[C.pl]), n_(r[C.pv]), C.v12 >= 0 ? n_(r[C.v12]) : null, C.rot >= 0 ? n_(r[C.rot]) : null, r[C.mon] == null ? '' : String(r[C.mon]).toLowerCase()]);
       }
     }
   }
   const fin = m => { const out = [...m.values()]; for (const e of out) { e[3] = e[5] != null && e[2] > 0 ? Math.round(e[5] / e[2] * 100) / 100 : null; e[5] = e[6]; e.length = 6; } return out; };
   const sucs = [...bySuc.entries()].map(([k, m]) => ({ suc: k, rows: fin(m) }));
-  const depos = [...deps.values()];
   const one = sucs[0] || { suc, rows: [] };
-  return { rows: one.rows, suc: one.suc, fecha, multi: sucs.length > 1 ? sucs : null, depos };
+  return { rows: one.rows, suc: one.suc, fecha, multi: sucs.length > 1 ? sucs : null, depos: [...deps.values()], avanzado: av };
 }
+/* Planilla por depósito (formato de siempre): sin piezas de origen P */
+const PLAN_HEAD = ['CODIGO', 'ORIGEN', 'DESCRIPCION', 'UBICACIÓN', 'CANTIDAD', 'P VENTA', 'Columna1', 'TOTAL COSTO', 'COSTOS', 'T VENTA'];
+const planRows = rows => rows.filter(r => String(r[1]).toUpperCase() !== 'P').map(r => [r[0], r[1], r[2], r[3], r[4], r[5] == null ? '' : r[5], r[11] == null ? 'x' : r[11], r[6] == null ? '' : r[6], r[7] == null ? '' : r[7], r[8] == null ? '' : r[8]]);
+const planName = f => { const d = new Date((f || new Date().toISOString().slice(0, 10)) + 'T12:00:00'); return `${d.getDate()}_${d.getMonth() + 1}_${String(d.getFullYear()).slice(-2)}.xlsx`; };
 
 /* Descarga de pedidos de Wings (hoja con encabezados Fecha pedido, Pieza pedida, # Pedida, ...) */
 function detectWings(aoa) {
@@ -1741,7 +1755,7 @@ function kpis(res, finals) {
   return K;
 }
 
-if (typeof module !== 'undefined') module.exports = { detectWings, parseWings, rubroDe, detectAutologica, parseAutologicaVentas, parseAutologicaVentasTaller, diasPeriodo, parseFybExcel, parseAutologicaStock, norm, num, aggVentas, aggWings, compute, kpis, DEFAULT_PARAMS, mesKey };
+if (typeof module !== 'undefined') module.exports = { detectWings, parseWings, rubroDe, detectAutologica, parseAutologicaVentas, parseAutologicaVentasTaller, diasPeriodo, parseFybExcel, parseAutologicaStock, planRows, PLAN_HEAD, planName, norm, num, aggVentas, aggWings, compute, kpis, DEFAULT_PARAMS, mesKey };
 
 </script>
 <script>
@@ -1890,7 +1904,7 @@ function render(){
   const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
-  if(S.tab==='depositos')bindDepChart();
+  if(S.tab==='depositos'){bindDepChart();bindHistChart()}
   if(S.tab==='ford')mountFord();
   if(S.tab==='fyb')loadFyb();
 }
@@ -2184,9 +2198,27 @@ async function saveDepos(a,fileName,sucApp){
   if(!db||!a.depos||!a.depos.length)return;const f=a.fecha||new Date().toISOString().slice(0,10);
   for(const d of a.depos){const suc=sucApp||(a.multi&&(a.multi.find(x=>x.suc===d.suc)||{}).sucApp)||S.sucMap[d.suc]||'';
     const r2_=m=>({items:m.items,u:Math.round(m.u*100)/100,costo:Math.round(m.costo*100)/100,precio:Math.round(m.precio*100)/100});
-    await db.doc(`depositos/${f}--${d.codigo}`).set({fecha:f,codigo:d.codigo,nombre:d.nombre,sucAutologica:d.suc,sucursal:suc,N:r2_(d.N),P:r2_(d.P),T:r2_(d.T),archivo:fileName||'',usuario:ME()?ME().email:'',loadedAt:new Date().toISOString()});
-    const newest=(S.depos||[]).filter(x=>x.codigo===d.codigo).reduce((m,x)=>x.fecha>m?x.fecha:m,'');if(f>=newest)await writeDataset('depoplan--'+d.codigo,{fecha:f,nombre:d.nombre},d.plan);}
+    d.sucursal=suc;
+    await db.doc(`depositos/${f}--${d.codigo}`).set({fecha:f,codigo:d.codigo,nombre:d.nombre,sucAutologica:d.suc,sucursal:suc,N:r2_(d.N),P:r2_(d.P),T:r2_(d.T),archivo:fileName||'',usuario:ME()?ME().email:'',loadedAt:new Date().toISOString(),hist:!!window.__store});}
+  await saveHist(f,fileName,a.depos);
 }
+/* Histórico por pieza: un archivo comprimido por fecha en Supabase Storage (no se baja al abrir la app) */
+const HIST_DIR='historial-stock/';
+async function gz(str){if(typeof CompressionStream==='undefined')return new Blob([str],{type:'application/json'});return new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).blob()}
+async function ungz(blob){const b=new Uint8Array(await blob.slice(0,2).arrayBuffer());if(b[0]===0x1f&&b[1]===0x8b&&typeof DecompressionStream!=='undefined')return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();return blob.text()}
+S.histCache=new Map();
+async function saveHist(f,fileName,depos){
+  if(!window.__store)return;
+  const obj={fecha:f,archivo:fileName||'',depos:depos.map(d=>({codigo:d.codigo,nombre:d.nombre,suc:d.suc,sucursal:d.sucursal||'',rows:d.rows}))};
+  try{await window.__store.put(HIST_DIR+f+'.json.gz',await gz(JSON.stringify(obj)));S.histCache.set(f,obj)}catch(e){toast('No se pudo guardar el histórico por pieza: '+(e.message||e.code))}
+}
+async function getHist(f){
+  if(S.histCache.has(f))return S.histCache.get(f);if(!window.__store)return null;
+  let o=null;try{const b=await window.__store.get(HIST_DIR+f+'.json.gz');if(b)o=JSON.parse(await ungz(b))}catch(e){toast('No se pudo leer el histórico del '+fD(f)+': '+(e.message||e.code))}
+  S.histCache.set(f,o);return o;
+}
+function planSheets(h){return h.depos.map(d=>({name:depName(d.codigo,d.nombre),rows:[PLAN_HEAD,...planRows(d.rows)]}))}
+async function downloadPlan(h){if(!h||!h.depos.length)return;await exportXlsx(planName(h.fecha),planSheets(h))}
 function depoData(){
   const L=(S.depos||[]).slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const codes=[...new Set(L.map(x=>x.codigo))].sort();const fechas=[...new Set(L.map(x=>x.fecha))].sort();
@@ -2199,13 +2231,89 @@ function vDepos(){
   const last=c=>{const fs=fechas.filter(f=>at(f,c));return [at(fs[fs.length-1],c),fs.length>1?at(fs[fs.length-2],c):null]};
   const delta=(a,b)=>{if(!b)return'<span class="faint">primera foto</span>';const d=a[k][met]-b[k][met],pc=b[k][met]?d/b[k][met]*100:0;return `<span style="color:${d>0?'var(--warn)':d<0?'var(--ok)':'var(--muted)'}">${d>0?'+':''}${M[1](d)} (${d>0?'+':''}${fN(pc,1)} %)</span> <span class="faint">vs ${fD(b.fecha)}</span>`};
   const orig=k==='N'?'origen N':k==='P'?'origen P':'todos los orígenes';
-  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Detallado</i> con los tres depósitos: además actualiza el stock de cada sucursal.</p></div>
+  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe crudo de Autologica <i>Stock a costo &gt; Avanzado</i> (o Detallado) con los tres depósitos: devuelve la planilla por depósito, guarda el detalle de cada pieza y actualiza el stock de cada sucursal.</p></div>
     <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label><button class="btn" data-act="depoXls"${codes.length?'':' disabled'}>Planilla por depósito</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
     ${codes.length?`<div class="tiles">${codes.map(c=>{const [a,b]=last(c);return `<div class="tile"><div class="l">${esc(depName(c,a.nombre))} · ${esc(a.sucursal||a.sucAutologica)}</div><div class="v">${M[1](a[k][met])}</div><div class="n">${fN(a[k].items)} ítems · ${fN(a[k].u)} u · al ${fD(a.fecha)}</div><div class="n">${delta(a,b)}</div></div>`}).join('')}</div>`:`<div class="empty">Todavía no hay fotos de depósitos. Cargá el informe de stock para empezar el registro.</div>`}
   </section>
   ${codes.length?`<section class="panel"><div class="panel-h"><h3>Evolución</h3><select id="depMet">${Object.entries(DEP_MET).map(([x,o])=>`<option value="${x}"${x===met?' selected':''}>${o[0]}</option>`).join('')}</select></div>
     <div class="chart" id="depChart"></div><div class="legend">${codes.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:${DEPC[i%DEPC.length]};display:inline-block"></i>${esc(depName(c))}</span>`).join('')}</div>
-    <div class="tw" style="margin-top:12px;max-height:420px"><table><thead><tr><th>Fecha</th>${codes.map(c=>`<th class="n">${esc(depName(c))}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>${fechas.slice().reverse().map(f=>{let t=0,all=true;const cells=codes.map(c=>{const x=at(f,c);if(!x){all=false;return '<td class="n faint">–</td>'}t+=x[k][met];return `<td class="n">${M[2](x[k][met])}</td>`}).join('');return `<tr><td>${fD(f)}</td>${cells}<td class="n">${all?M[2](t):'<span class="faint">incompleto</span>'}</td></tr>`}).join('')}</tbody></table></div></section>`:''}`;
+    <div class="tw" style="margin-top:12px;max-height:420px"><table><thead><tr><th>Fecha</th>${codes.map(c=>`<th class="n">${esc(depName(c))}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>${fechas.slice().reverse().map(f=>{let t=0,all=true;const cells=codes.map(c=>{const x=at(f,c);if(!x){all=false;return '<td class="n faint">–</td>'}t+=x[k][met];return `<td class="n">${M[2](x[k][met])}</td>`}).join('');return `<tr><td>${fD(f)}</td>${cells}<td class="n">${all?M[2](t):'<span class="faint">incompleto</span>'}</td></tr>`}).join('')}</tbody></table></div></section>`:''}
+  ${codes.length?vDepoHist():''}`;
+}
+/* ---- Histórico por pieza ---- */
+const HF={cambio:'Con cambios',entro:'Entraron',salio:'Salieron',subio:'Subieron',bajo:'Bajaron',igual:'Sin movimiento'};
+const okOrig=o=>{const k=depKey();return k==='T'||(k==='P'?String(o).toUpperCase()==='P':String(o).toUpperCase()!=='P')};
+function vDepoHist(){
+  const u=S.ui,{codes,fechas,at}=depoData();const hf=fechas.filter(f=>codes.some(c=>{const x=at(f,c);return x&&x.hist}));
+  const head=`<section class="panel"><div class="panel-h"><div><h3>Piezas por depósito</h3><p class="sub">Compará dos cargas para ver qué piezas entraron, salieron o cambiaron de cantidad, o buscá una pieza para ver su stock en el tiempo.</p></div>
+    <div class="seg" role="group">${[['cmp','Comparar fechas'],['pieza','Buscar pieza']].map(([k,t])=>`<button data-hmode="${k}" aria-pressed="${(u.hMode||'cmp')===k}">${t}</button>`).join('')}</div></div>`;
+  if(!hf.length)return head+`<div class="empty">El detalle por pieza se guarda desde esta versión: va a aparecer con la próxima carga del informe de stock.</div></section>`;
+  if((u.hMode||'cmp')==='pieza')return head+vHistPieza(hf)+'</section>';
+  const dep=u.hDep&&codes.includes(u.hDep)?u.hDep:codes[0];
+  const B=u.hB&&hf.includes(u.hB)?u.hB:hf[hf.length-1],A=u.hA&&hf.includes(u.hA)&&u.hA!==B?u.hA:(hf.filter(f=>f<B).pop()||B);
+  const ctl=`<div class="toolbar" style="margin-bottom:10px"><select id="hDep">${codes.map(c=>`<option value="${c}"${c===dep?' selected':''}>${esc(depName(c))}</option>`).join('')}</select>
+    <label class="suc" for="hA">Desde</label><select id="hA">${hf.map(f=>`<option value="${f}"${f===A?' selected':''}>${fD(f)}</option>`).join('')}</select>
+    <label class="suc" for="hB">Hasta</label><select id="hB">${hf.map(f=>`<option value="${f}"${f===B?' selected':''}>${fD(f)}</option>`).join('')}</select>
+    <select id="hF">${Object.entries(HF).map(([k,t])=>`<option value="${k}"${(u.hF||'cambio')===k?' selected':''}>${t}</option>`).join('')}</select>
+    <input type="search" id="hQ" placeholder="Buscar código o descripción" value="${esc(u.hQ||'')}" style="flex:1;min-width:160px"></div>`;
+  const ha=S.histCache.get(A),hb=S.histCache.get(B);
+  if(ha===undefined||hb===undefined){setTimeout(async()=>{await getHist(A);await getHist(B);if(S.tab==='depositos')render()},0);return head+ctl+'<div class="empty">Cargando el detalle de las dos fechas…</div></section>'}
+  if(!ha||!hb)return head+ctl+'<div class="empty">Falta el detalle de alguna de las fechas.</div></section>';
+  const mapOf=h=>{const d=h.depos.find(x=>x.codigo===dep);const m=new Map();if(d)for(const r of d.rows){if(!okOrig(r[1]))continue;const k=norm(r[0])+'¦'+String(r[1]).trim();const o=m.get(k);if(o){o.q+=r[4];o.v+=r[6]||0}else m.set(k,{code:String(r[0]).trim(),orig:String(r[1]).trim(),desc:String(r[2]).trim(),q:r[4],v:r[6]||0,c:r[4]?(r[6]||0)/r[4]:(r[5]||0)})}return m};
+  const ma=mapOf(ha),mb=mapOf(hb);const L=[];
+  for(const k of new Set([...ma.keys(),...mb.keys()])){const a=ma.get(k),b=mb.get(k);const qa=a?a.q:0,qb=b?b.q:0,x=b||a;
+    const t=!a?'entro':!b?'salio':qb>qa?'subio':qb<qa?'bajo':'igual';L.push({code:x.code,orig:x.orig,desc:x.desc,qa,qb,d:qb-qa,dv:(b?b.v:0)-(a?a.v:0),vb:b?b.v:0,t})}
+  const cnt=k=>k==='cambio'?L.filter(l=>l.t!=='igual').length:L.filter(l=>l.t===k).length;
+  const f=u.hF||'cambio',q=(u.hQ||'').trim().toUpperCase();
+  const F=L.filter(l=>(f==='cambio'?l.t!=='igual':l.t===f)&&(!q||l.code.toUpperCase().includes(q)||l.desc.toUpperCase().includes(q))).sort((x,y)=>Math.abs(y.dv)-Math.abs(x.dv));
+  const sum=k=>L.filter(l=>l.t===k).reduce((s,l)=>s+l.dv,0);
+  const tiles=`<div class="tiles" style="margin-bottom:12px">${[['entro','Entraron'],['salio','Salieron'],['subio','Subieron'],['bajo','Bajaron'],['igual','Sin movimiento']].map(([k,t])=>`<div class="tile"><div class="l">${t}</div><div class="v">${fN(cnt(k))}</div><div class="n">${k==='igual'?fM(L.filter(l=>l.t==='igual').reduce((s,l)=>s+l.vb,0))+' sin moverse':(sum(k)>0?'+':'')+fM(sum(k))}</div></div>`).join('')}</div>`;
+  const pill={entro:['Entró','p-ok'],salio:['Salió','p-quiebre'],subio:['Subió','p-exceso'],bajo:['Bajó','p-bajo'],igual:['Igual','p-sin']};
+  return head+ctl+tiles+(F.length?`<div class="tw" style="max-height:520px"><table><thead><tr><th>Movimiento</th><th>Código</th><th>Orig.</th><th>Descripción</th><th class="n">${fD(A)}</th><th class="n">${fD(B)}</th><th class="n">Diferencia</th><th class="n">$ diferencia</th></tr></thead><tbody>
+    ${F.slice(0,600).map(l=>`<tr><td><span class="pill ${pill[l.t][1]}">${pill[l.t][0]}</span></td><td class="code"><a href="#" data-hcode="${esc(l.code)}" title="Ver evolución">${esc(l.code)}</a></td><td>${esc(l.orig)}</td><td class="desc" title="${esc(l.desc)}">${esc(l.desc)}</td><td class="n">${fN(l.qa,2)}</td><td class="n">${fN(l.qb,2)}</td><td class="n">${l.d>0?'+':''}${fN(l.d,2)}</td><td class="n">${l.dv>0?'+':''}${f$(l.dv)}</td></tr>`).join('')}</tbody></table></div>${F.length>600?`<p class="faint">Mostrando 600 de ${fN(F.length)}. Exportá para ver todo.</p>`:''}`:'<div class="empty">No hay piezas con este filtro.</div>')
+    +`<div class="toolbar" style="margin-top:10px"><button class="btn" data-act="hXls">Exportar comparación</button><span class="faint">${fN(F.length)} piezas · ${esc(depName(dep))} · origen ${depKey()==='T'?'todos':depKey()}</span></div></section>`;
+}
+function vHistPieza(hf){
+  const u=S.ui,R=S.hSeries;
+  const ctl=`<form id="hForm" class="toolbar" style="margin-bottom:10px"><input type="text" id="hCode" placeholder="Código de pieza" value="${esc(u.hCode||'')}" style="width:200px"><select id="hRange">${[['30','Últimos 30 días'],['90','Últimos 90 días'],['180','Últimos 6 meses'],['all','Todo']].map(([k,t])=>`<option value="${k}"${(u.hRange||'90')===k?' selected':''}>${t}</option>`).join('')}</select><button class="btn pri" type="submit">Ver evolución</button><span class="faint">${fN(hf.length)} cargas guardadas</span></form>`;
+  if(!R)return ctl+'<div class="empty">Escribí un código para ver su stock en cada depósito a lo largo del tiempo.</div>';
+  if(R.loading)return ctl+`<div class="empty">Leyendo ${R.done} de ${R.total} cargas…</div>`;
+  if(!R.found)return ctl+`<div class="empty">${esc(R.code)} no aparece en las cargas del período.</div>`;
+  const deps=R.deps;
+  return ctl+`<p style="margin:0 0 8px"><b class="code">${esc(R.code)}</b> ${esc(R.desc)}</p><div class="chart" id="hChart"></div>
+    <div class="tw" style="margin-top:10px;max-height:420px"><table><thead><tr><th>Fecha</th>${deps.map(c=>`<th class="n">${esc(depName(c))}</th>`).join('')}<th class="n">Total</th><th class="n">Vendido 12m</th></tr></thead><tbody>
+    ${R.rows.slice().reverse().map(r=>`<tr><td>${fD(r.f)}</td>${deps.map(c=>`<td class="n">${r[c]==null?'<span class="faint">0</span>':fN(r[c],2)}</td>`).join('')}<td class="n"><b>${fN(deps.reduce((s,c)=>s+(r[c]||0),0),2)}</b></td><td class="n">${r.v12==null?'–':fN(r.v12)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+async function histSeries(){
+  const u=S.ui,code=norm(u.hCode||'');if(!code)return;const {codes,fechas,at}=depoData();
+  let hf=fechas.filter(f=>codes.some(c=>{const x=at(f,c);return x&&x.hist}));
+  if(u.hRange&&u.hRange!=='all'){const lim=new Date(Date.now()-(+u.hRange)*864e5).toISOString().slice(0,10);hf=hf.filter(f=>f>=lim)}else if(!u.hRange){const lim=new Date(Date.now()-90*864e5).toISOString().slice(0,10);hf=hf.filter(f=>f>=lim)}
+  const R={code,loading:true,done:0,total:hf.length,rows:[],deps:[],desc:''};S.hSeries=R;render();
+  const deps=new Set();
+  for(const f of hf){const h=await getHist(f);R.done++;if(R.done%5===0&&S.tab==='depositos')render();if(!h)continue;const row={f};let v12=null;
+    for(const d of h.depos)for(const r of d.rows){if(norm(r[0])!==code||!okOrig(r[1]))continue;row[d.codigo]=(row[d.codigo]||0)+r[4];deps.add(d.codigo);if(!R.desc)R.desc=String(r[2]).trim();if(r[9]!=null)v12=(v12||0)+r[9]}
+    row.v12=v12;R.rows.push(row)}
+  R.deps=[...deps].sort();R.found=R.deps.length>0;R.loading=false;if(S.hSeries===R&&S.tab==='depositos')render();
+}
+function bindHistChart(){
+  const el=$('#hChart'),R=S.hSeries;if(!el||!R||!R.found)return;if(R.rows.length<2){el.innerHTML='';return}
+  const W=Math.max(320,Math.round(el.clientWidth||720)),H=200,pl=48,pr=24,pt=10,pb=24;const vals=R.rows.flatMap(r=>R.deps.map(c=>r[c]||0));const top=Math.max(1,...vals)*1.1;
+  const t0=new Date(R.rows[0].f).getTime(),t1=new Date(R.rows[R.rows.length-1].f).getTime();const X=f=>pl+(W-pl-pr)*((new Date(f).getTime()-t0)/((t1-t0)||1)),Y=v=>pt+(H-pt-pb)*(1-v/top);
+  let g=[0,top/2,top].map(v=>`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(v)+4}" text-anchor="end">${fN(v)}</text>`).join('');
+  g+=`<text x="${pl}" y="${H-6}">${fD(R.rows[0].f).slice(0,5)}</text><text x="${W-pr}" y="${H-6}" text-anchor="end">${fD(R.rows[R.rows.length-1].f).slice(0,5)}</text>`;
+  const codes=depoData().codes;
+  g+=R.deps.map(c=>{const col=DEPC[codes.indexOf(c)%DEPC.length];return `<polyline fill="none" stroke="${col}" stroke-width="2" points="${R.rows.map(r=>X(r.f)+','+Y(r[c]||0)).join(' ')}"/>`}).join('');
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Stock de ${esc(R.code)} por depósito">${g}</svg><div class="legend">${R.deps.map(c=>`<span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:${DEPC[codes.indexOf(c)%DEPC.length]};display:inline-block"></i>${esc(depName(c))}</span>`).join('')}</div>`;
+}
+function hXls(){
+  const u=S.ui,{codes,fechas,at}=depoData();const hf=fechas.filter(f=>codes.some(c=>{const x=at(f,c);return x&&x.hist}));
+  const dep=u.hDep&&codes.includes(u.hDep)?u.hDep:codes[0],B=u.hB&&hf.includes(u.hB)?u.hB:hf[hf.length-1],A=u.hA&&hf.includes(u.hA)&&u.hA!==B?u.hA:(hf.filter(f=>f<B).pop()||B);
+  const ha=S.histCache.get(A),hb=S.histCache.get(B);if(!ha||!hb)return;
+  const mapOf=h=>{const d=h.depos.find(x=>x.codigo===dep);const m=new Map();if(d)for(const r of d.rows){if(!okOrig(r[1]))continue;const k=norm(r[0])+'¦'+String(r[1]).trim();const o=m.get(k);if(o){o.q+=r[4];o.v+=r[6]||0}else m.set(k,{code:String(r[0]).trim(),orig:String(r[1]).trim(),desc:String(r[2]).trim(),q:r[4],v:r[6]||0})}return m};
+  const ma=mapOf(ha),mb=mapOf(hb);const T={entro:'Entró',salio:'Salió',subio:'Subió',bajo:'Bajó',igual:'Igual'};
+  const rows=[['Movimiento','Código','Origen','Descripción','Stock '+fD(A),'Stock '+fD(B),'Diferencia','$ '+fD(A),'$ '+fD(B),'$ diferencia']];
+  for(const k of new Set([...ma.keys(),...mb.keys()])){const a=ma.get(k),b=mb.get(k),x=b||a,qa=a?a.q:0,qb=b?b.q:0;rows.push([T[!a?'entro':!b?'salio':qb>qa?'subio':qb<qa?'bajo':'igual'],x.code,x.orig,x.desc,qa,qb,qb-qa,a?r2(a.v):0,b?r2(b.v):0,r2((b?b.v:0)-(a?a.v:0))])}
+  exportXlsx(`Movimientos ${depName(dep)} ${A} a ${B}.xlsx`,[{name:'Movimientos',rows}]);
 }
 const DEPC=['var(--bar)','#d9822b','#2c9a6a','#8a63d2','#c2410c'];
 function bindDepChart(){
@@ -2223,11 +2331,10 @@ function bindDepChart(){
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución por depósito">${g}${lines}</svg>`;
 }
 async function depoXls(){
-  const {codes,fechas,at}=depoData();const sheets=[];let f0='';
-  for(const c of codes){const d=await readDataset('depoplan--'+c);if(!d)continue;f0=d.meta.fecha>f0?d.meta.fecha:f0;
-    sheets.push({name:depName(c,d.meta.nombre),rows:[['CODIGO','ORIGEN','DESCRIPCION','UBICACIÓN','CANTIDAD','P VENTA','Columna1','TOTAL COSTO','COSTOS','T VENTA'],...d.rows]})}
-  if(!sheets.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return}
-  const d=new Date((f0||stamp())+'T12:00:00');exportXlsx(`${d.getDate()}_${d.getMonth()+1}_${String(d.getFullYear()).slice(-2)}.xlsx`,sheets);
+  const {fechas}=depoData();const f=S.ui.hB&&fechas.includes(S.ui.hB)?S.ui.hB:fechas[fechas.length-1];if(!f)return;
+  toast('Armando la planilla del '+fD(f)+'…');const h=await getHist(f);
+  if(!h){toast('No está guardado el detalle del '+fD(f)+': volvé a cargar ese informe de stock.');return}
+  downloadPlan(h);
 }
 function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Depósito','Sucursal','Ítems N','Unidades N','$ costo N','$ precio N','Ítems P','$ costo P','Ítems total','$ costo total','$ precio total']];
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
@@ -2334,7 +2441,7 @@ function vAuto(p){
       ${isV?'':`<div class="tile"><div class="l">Valorizado a costo</div><div class="v">${fM(val)}</div></div>`}
     </div>
     ${!isV&&a.multi?`<h3 style="margin:4px 0 8px">El informe trae ${a.multi.length} sucursales</h3><div class="tw" style="max-height:none;margin-bottom:12px"><table><thead><tr><th>Autologica</th><th class="n">Piezas</th><th>Guardar en</th></tr></thead><tbody>${a.multi.map((d,i)=>`<tr><td>${esc(d.suc)}</td><td class="n">${fN(d.rows.length)}</td><td><select data-msuc="${i}">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===d.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value=""${d.sucApp===''?' selected':''}>No guardar</option></select></td></tr>`).join('')}</tbody></table></div>`:''}
-    ${!isV&&a.depos&&a.depos.length?`<p class="faint" style="margin:0 0 10px">Además se guarda la foto del día de ${a.depos.map(d=>esc(depName(d.codigo,d.nombre))).join(', ')} para <b>Stock por depósito</b>.</p>`:''}
+    ${!isV&&a.depos&&a.depos.length?`<div class="note" style="margin:0 0 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center"><span style="flex:1;min-width:240px">Al confirmar se descarga <b>${planName(a.fecha)}</b> (${a.depos.map(d=>`${esc(depName(d.codigo,d.nombre))} ${fN(planRows(d.rows).length)}`).join(' · ')} ítems, sin origen P) y queda guardado el detalle de cada pieza para el histórico.</span><button class="btn sm" data-act="planNow">Descargar planilla sin guardar</button></div>`:''}
     <div class="map"${!isV&&a.multi?' hidden':''}><label>Guardar en la sucursal<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select>${!isAdmin()&&a.suc&&S.sucMap[a.suc]&&S.sucMap[a.suc]!==S.P.sucursal?`<div class="note warn">Este informe es de <b>${esc(S.sucMap[a.suc])}</b> (Autologica: ${esc(a.suc)}), pero tu usuario carga ${esc(S.P.sucursal)}. Revisá que bajaste el archivo de tu sucursal.</div>`:''}<small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
     <h3 style="margin:14px 0 8px">Primeras filas</h3>
     <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
@@ -2451,12 +2558,12 @@ async function confirmAuto(p){
         const cur=(await loadSuc(to)).stock;if(cur&&cur.meta.fecha&&a.fecha&&a.fecha<cur.meta.fecha){old.push(`${to} (tiene stock al ${fD(cur.meta.fecha)})`);continue}
         await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:to,fuente:'Autologica',sucOrigen:d.suc,porOrigen:true},d.rows,to);
         S.finalsBy[to]={};logAct('Cargó stock',`${p.fileName} · ${d.rows.length} piezas al ${fD(a.fecha)}`,to);done.push(`${to} ${fN(d.rows.length)}`)}
-      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);
+      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);if(a.depos&&a.depos.length)downloadPlan({fecha:a.fecha,depos:a.depos});
       toast((done.length?`Stock al ${fD(a.fecha)} guardado: ${done.join(' · ')} piezas.`:`Foto del ${fD(a.fecha)} guardada en Stock por depósito.`)+(old.length?` No se reemplazó el stock de ${old.join(', ')}: este informe es más viejo.`:''));
     }else if((()=>{const c=S.cache[suc]&&S.cache[suc].stock;return c&&c.meta.fecha&&a.fecha&&a.fecha<c.meta.fecha})()){
-      await saveDepos(a,p.fileName,suc);toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
+      await saveDepos(a,p.fileName,suc);if(a.depos&&a.depos.length)downloadPlan({fecha:a.fecha,depos:a.depos});toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
     }else{
-      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);
+      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);if(a.depos&&a.depos.length)downloadPlan({fecha:a.fecha,depos:a.depos});
       if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();logAct('Cargó stock',`${p.fileName} · ${a.rows.length} piezas al ${fD(a.fecha)}`,suc);toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
     }
     S.pending=null;
@@ -2577,12 +2684,14 @@ async function saveSug(name){
 
 /* ---------- Eventos ---------- */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd],[data-fybmode],[data-fybrm]');if(!t)return;
+  const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd],[data-fybmode],[data-fybrm],[data-hmode],[data-hcode]');if(!t)return;
   const u=S.ui;
   if(t.dataset.tab){S.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
   if(t.dataset.view){u.view=t.dataset.view;u.sort=u.view==='pedir'?'$':'code';u.dir=u.view==='pedir'?-1:1;render();return}
   if(t.dataset.sort){const k=t.dataset.sort;if(u.sort===k)u.dir*=-1;else{u.sort=k;u.dir=['code','desc'].includes(k)?1:-1}render();return}
   if(t.dataset.open){u.openSaved=u.openSaved===t.dataset.open?null:t.dataset.open;u.confirmDel=null;render();return}
+  if(t.dataset.hmode){u.hMode=t.dataset.hmode;render();return}
+  if(t.dataset.hcode){e.preventDefault();u.hMode='pieza';u.hCode=t.dataset.hcode;histSeries();return}
   if(t.dataset.fybmode){u.fybMode=t.dataset.fybmode;render();return}
   if(t.dataset.fybrm){const c=t.dataset.fybrm;saveFybItems(S.fyb.items.filter(x=>x[1]!==c)).then(()=>{logAct('Quitó de filtros y bujías',c,'Todas');render();toast(c+' quitada de la lista.')}).catch(e=>toast('No se pudo: '+(e.message||e.code)));return}
   if(t.dataset.addstd){logAct('Agregó al estándar',t.dataset.addstd);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),t.dataset.addstd])];saveStd();recompute();render();return}
@@ -2599,6 +2708,8 @@ document.addEventListener('click',e=>{
   else if(a==='exportStd')exportXlsx(`Estandar stock ${stdKey()} ${stamp()}.xlsx`,[{name:'Estandar',rows:stdSheet()}]);
   else if(a==='exportInf')exportInf();
   else if(a==='depoXls')depoXls();
+  else if(a==='planNow'){const x=S.pending&&S.pending.auto;if(x&&x.depos)downloadPlan({fecha:x.fecha,depos:x.depos})}
+  else if(a==='hXls')hXls();
   else if(a==='fybXls')fybXls();
   else if(a==='depoHist')depoHist();
   else if(a==='exportSaved')exportSaved();
@@ -2616,6 +2727,8 @@ document.addEventListener('click',e=>{
 let qT;
 document.addEventListener('input',e=>{
   const t=e.target,u=S.ui;
+  if(t.id==='hQ'){u.hQ=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=$('#hQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
+  if(t.id==='hCode'){u.hCode=t.value;return}
   if(t.id==='fybQ'){u.fybQ=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=$('#fybQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.id==='q'||t.id==='stdQ'||t.id==='candQ'){u[t.id]=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=document.getElementById(t.id);if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.dataset.fin){const l=S.byCode.get(t.dataset.fin);let v=Math.max(0,num(t.value));if(v===l.sug)delete S.finals[l.code];else S.finals[l.code]=v;t.classList.toggle('chg',S.finals[l.code]!=null);
@@ -2637,6 +2750,7 @@ document.addEventListener('change',e=>{
   if(t.dataset.map){S.pending.map[t.dataset.map]=+t.value;render();return}
   if(t.dataset.msuc!=null){S.pending.auto.multi[+t.dataset.msuc].sucApp=t.value;return}
   if(t.id==='depMet'){S.ui.depMet=t.value;render();return}
+  if(['hDep','hA','hB','hF','hRange'].includes(t.id)){S.ui[t.id]=t.value;if(t.id!=='hRange')render();return}
   if(t.id==='fybSuc'||t.id==='fybDesde'){S.ui[t.id]=t.value;render();return}
   if(t.dataset.pc){S.P[t.dataset.pc]=t.checked;saveParams();recompute();return}
   if(t.dataset.transf){const k=t.dataset.transf;S.sucCfg[k]=Object.assign({},S.sucCfg[k],{transf:t.checked});saveSucs();recompute();render();return}
@@ -2649,6 +2763,7 @@ document.addEventListener('submit',e=>{
   if(e.target.id==='saveForm'){saveSug($('#saveName').value.trim())}
   if(e.target.dataset&&e.target.dataset.man){saveManual(e.target.dataset.man,e.target);return}
   if(e.target.id==='addSuc'){const n=$('#newSuc').value.trim();if(!n)return;if(S.sucs.some(s=>slug(s)===slug(n))){toast('Esa sucursal ya existe.');return}S.sucs.push(n);saveSucs();switchSuc(n);toast(n+' agregada. Cargá sus ventas y stock en Cargar datos.')}
+  if(e.target.id==='hForm'){S.ui.hCode=$('#hCode').value;S.ui.hRange=$('#hRange').value;histSeries();return}
   if(e.target.id==='fybAdd'){const c=norm($('#fybCode').value);if(!c||!S.fyb)return;if(S.fyb.items.some(x=>fkey(x[1])===fkey(c))){toast('Esa pieza ya está en la lista.');return}const l=S.byCode&&S.byCode.get(c);
     saveFybItems(S.fyb.items.concat([[$('#fybCat').value,c,l?l.desc:'',$('#fybApl').value.trim()]])).then(()=>{logAct('Agregó a filtros y bujías',c,'Todas');render();toast(c+' agregada.')}).catch(err=>toast('No se pudo: '+(err.message||err.code)));return}
   if(e.target.id==='addStd'){const c=norm($('#addCode').value);if(!c)return;logAct('Agregó al estándar',c);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),c])];saveStd();recompute();render();toast(c+' agregada al estándar'+(S.byCode.get(c)&&S.byCode.get(c).enStock?'':' (no figura en stock ni ventas)'))}
