@@ -1758,7 +1758,7 @@ let db=null,dl=null;
 const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca','Quick Lane'],sucMap:{'CASA CENTRAL':'La Rioja','QUICK LANE LA RIOJA':'Quick Lane','WINGS 60580':'Quick Lane'},sucCfg:{'Quick Lane':{transf:true}},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
   tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
   ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
-const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
 const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
@@ -1832,7 +1832,8 @@ async function boot(){
   try{if(window.claude&&claude.use){[db,dl]=await Promise.all([claude.use('db'),claude.use('downloads')])}}catch(e){}
   if(!db){S.noDb=true;S.loading=false;recompute();render();return}
   try{
-    const [p,s,d,sc]=await Promise.all([db.doc('config/params').get(),db.doc('config/std').get(),db.doc('config/draft').get(),db.doc('config/sucursales').get()]);
+    const [p,s,d,sc,cc]=await Promise.all([db.doc('config/params').get(),db.doc('config/std').get(),db.doc('config/draft').get(),db.doc('config/sucursales').get(),db.doc('config/ctrl').get()]);
+    if(cc.exists)S.ctrlCfg=Object.assign({},cc.data());
     if(p.exists){S.P=Object.assign({},DEFAULT_PARAMS,p.data());if((S.P.exclFam||[]).some(f=>/^Oil /.test(f))){S.P.exclFam=DEFAULT_PARAMS.exclFam.slice();saveParams()}}
     S.P.origen='N';
     if(s.exists)S.stdBy=Object.assign({},s.data().bySuc||{});
@@ -1847,6 +1848,7 @@ async function boot(){
     await useSuc(S.P.sucursal);
     if(ME()&&ME().admin)db.collection('actividad').onSnapshot(snap=>{S.act=snap.docs.map(x=>x.data()).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&S.tab==='actividad')render()},()=>{});
     db.collection('depositos').onSnapshot(snap=>{S.depos=snap.docs.map(x=>x.data());if(!S.loading&&S.tab==='depositos')render()},()=>{});
+    db.collection('controles').onSnapshot(snap=>{S.ctrls=snap.docs.map(x=>Object.assign({id:x.id},x.data()));const a=document.activeElement;if(!S.loading&&S.tab==='control'&&!(a&&a.closest&&a.closest('#main')&&a.matches('input,select,textarea')))render()},()=>{});
     db.collection('sugeridos').onSnapshot(snap=>{S.saved=snap.docs.map(x=>Object.assign({id:x.id},x.data())).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&(S.tab==='historial'))render();renderChips()},()=>{});
   }catch(e){toast('Error al leer los datos guardados: '+(e.message||e.code))}
   S.loading=false;recompute();render();
@@ -1887,7 +1889,7 @@ function render(){
   renderShell();
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
-  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord}[S.tab]||vSug;
+  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
@@ -2233,6 +2235,129 @@ function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Dep
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
   exportXlsx(`Evolucion stock por deposito ${stamp()}.xlsx`,[{name:'Evolucion',rows}])}
 
+/* ---------- Vista: Control de stock (conteo cíclico semanal) ---------- */
+const CR={std:['Estándar','Piezas del estándar de la sucursal, primero las de más plata en stock'],ven:['Más vendidos','Las más vendidas del período en unidades'],caro:['Más caros vendidos','Las de mayor costo unitario entre las vendidas del período'],todo:['Todo el stock','Todas las piezas con stock, primero las de más plata: asegura que con el tiempo se controle todo'],mix:['Mixto','Un poco de cada criterio en el mismo control']};
+const CR4=['std','ven','caro','todo'];
+const ctrlCfg=()=>{const c=S.ctrlCfg||(S.ctrlCfg={});c.n=c.n||15;c.top=c.top||100;c.vueltas=c.vueltas||{};return c};
+const saveCtrlCfg=()=>queueWrite('config/ctrl',()=>ctrlCfg());
+const ctrlsSuc=()=>(S.ctrls||[]).filter(x=>x.suc===S.P.sucursal).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+function isoWeek(d){d=new Date(d);const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y=t.getUTCFullYear();const w=Math.ceil(((t-Date.UTC(y,0,1))/864e5+1)/7);return y+'-S'+String(w).padStart(2,'0')}
+/* stock físico por código: N y P juntos (están en la misma estantería con el mismo código) */
+function ctrlStock(){
+  const m=new Map();if(!S.D.stock)return m;
+  for(const r of S.D.stock.rows){const q=num(r[2]),cost=r[3]==null||r[3]===''?null:num(r[3]);let o=m.get(r[0]);
+    if(!o){o={q:0,val:0,vq:0,orig:'',desc:r[1]};m.set(r[0],o)}o.q+=q;if(cost!=null&&q>0){o.val+=cost*q;o.vq+=q}const og=r[5]||'';if(og&&o.orig.indexOf(og)<0)o.orig+=(o.orig?'+':'')+og}
+  for(const o of m.values())o.cost=o.vq?o.val/o.vq:null;return m;
+}
+function ctrlUniverse(cr){
+  const L=(S.res&&S.res.lines)||[],top=ctrlCfg().top;const v=l=>Math.max(0,l.st)*(l.cost||0);
+  if(cr==='std')return L.filter(l=>l.inStd).sort((a,b)=>v(b)-v(a)||b.q6-a.q6);
+  if(cr==='ven')return L.filter(l=>l.q6>0).sort((a,b)=>b.q6-a.q6).slice(0,top);
+  if(cr==='caro')return L.filter(l=>l.q6>0&&l.cost).sort((a,b)=>b.cost-a.cost).slice(0,top);
+  return L.filter(l=>l.st>0).sort((a,b)=>v(b)-v(a));
+}
+function ctrlVuelta(cr){const V=ctrlCfg().vueltas,k=S.P.sucursal;const o=(V[k]||(V[k]={}))[cr]||(V[k][cr]={n:1,desde:'2000-01-01'});return o}
+/* códigos ya controlados (en cualquier control de la sucursal) desde una fecha */
+function ctrlDoneSince(desde){const s=new Set();for(const c of ctrlsSuc())if(c.fecha>=desde)for(const it of c.items)s.add(it.c);return s}
+function ctrlProgress(cr){const U=ctrlUniverse(cr),V=ctrlVuelta(cr),done=ctrlDoneSince(V.desde);const pend=U.filter(l=>!done.has(l.code));return {U,V,pend,hechas:U.length-pend.length}}
+function ctrlShare(){const n=ctrlCfg().n,b=Math.floor(n/4),r=n-b*4;const o={};CR4.forEach((k,i)=>o[k]=b+(i<r?1:0));return o}
+async function ctrlUbic(){
+  const d=(S.depos||[]).filter(x=>x.sucursal===S.P.sucursal).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];const m=new Map();if(!d)return m;
+  try{const p=await readDataset('depoplan--'+d.codigo);if(p)for(const r of p.rows){const c=norm(r[0]),u=String(r[3]==null?'':r[3]).trim();if(c&&u&&!m.has(c))m.set(c,u)}}catch(e){}
+  return m;
+}
+async function ctrlGen(){
+  if(!S.D.stock){toast('Cargá el stock de '+S.P.sucursal+' antes de generar el control.');return}
+  const cfg=ctrlCfg(),cr=S.ui.ctrlCr||'mix',n=cfg.n;const want=cr==='mix'?ctrlShare():{[cr]:n};
+  const pick=[],seen=new Set(),vu={};
+  for(const k of CR4){let q=want[k]||0;if(!q)continue;
+    let P=ctrlProgress(k);if(!P.U.length)continue;
+    if(!P.pend.length){const V=ctrlVuelta(k);V.n++;V.desde=new Date().toISOString();P=ctrlProgress(k)}
+    vu[k]=ctrlVuelta(k).n;
+    for(const l of P.pend){if(!q)break;if(seen.has(l.code))continue;seen.add(l.code);pick.push([l,k]);q--}
+  }
+  /* si un criterio del mixto no alcanza, completa con Todo el stock */
+  if(pick.length<n){const P=ctrlProgress('todo');for(const l of P.pend){if(pick.length>=n)break;if(!seen.has(l.code)){seen.add(l.code);pick.push([l,'todo'])}}}
+  if(!pick.length){toast('No hay piezas para controlar con ese criterio.');return}
+  const st=ctrlStock(),ub=await ctrlUbic();
+  const items=pick.map(([l,k])=>{const s=st.get(l.code);return {c:l.code,d:l.desc,u:ub.get(norm(l.code))||'',o:s?s.orig:l.orig,s:s?s.q:0,k:s&&s.cost!=null?s.cost:l.cost,q:null,nt:'',cr:k}})
+    .sort((a,b)=>(a.u||'~').localeCompare(b.u||'~',undefined,{numeric:true})||a.c.localeCompare(b.c));
+  const doc={suc:S.P.sucursal,fecha:new Date().toISOString(),semana:isoWeek(new Date()),criterio:cr,vueltas:vu,estado:'Abierto',usuario:ME()?ME().email:'',stockFecha:S.D.stock.meta.fecha||'',items};
+  try{const r=await db.collection('controles').add(doc);saveCtrlCfg();S.ui.ctrlOpen=r.id;logAct('Generó control de stock',`${CR[cr][0]} · ${items.length} piezas`);toast(`Control generado: ${items.length} piezas. Imprimí la planilla y cargá lo contado.`);render()}
+  catch(e){toast('No se pudo guardar el control: '+(e.message||e.code))}
+}
+function ctrlSum(c){
+  const R={n:c.items.length,cont:0,ok:0,dif:0,falU:0,fal$:0,sobU:0,sob$:0};
+  for(const it of c.items){if(it.q==null)continue;R.cont++;const d=it.q-it.s,k=it.k||0;if(d===0)R.ok++;else{R.dif++;if(d<0){R.falU-=d;R.fal$-=d*k}else{R.sobU+=d;R.sob$+=d*k}}}
+  R.exact=R.cont?R.ok/R.cont*100:null;R.neto=R.sob$-R.fal$;return R;
+}
+function ctrlSumHtml(c){const R=ctrlSum(c);return `<div class="tile"><div class="l">Contadas</div><div class="v">${R.cont} / ${R.n}</div></div>
+  <div class="tile"><div class="l">Exactitud</div><div class="v" style="color:${R.exact==null?'inherit':R.exact>=95?'var(--ok)':R.exact>=85?'var(--warn)':'var(--crit)'}">${R.exact==null?'–':fN(R.exact,0)+' %'}</div><div class="n">${R.ok} bien · ${R.dif} con diferencia</div></div>
+  <div class="tile"><div class="l">Faltante</div><div class="v" style="color:${R.fal$?'var(--crit)':'inherit'}">${f$(R.fal$)}</div><div class="n">${fN(R.falU)} u</div></div>
+  <div class="tile"><div class="l">Sobrante</div><div class="v">${f$(R.sob$)}</div><div class="n">${fN(R.sobU)} u</div></div>
+  <div class="tile"><div class="l">Diferencia neta</div><div class="v" style="color:${R.neto<0?'var(--crit)':'inherit'}">${f$(R.neto)}</div></div>`}
+function ctrlDifCell(it){if(it.q==null)return '<span class="faint">–</span>';const d=it.q-it.s;return d===0?'<span class="pill p-ok">OK</span>':`<b style="color:${d<0?'var(--crit)':'var(--info)'}">${d>0?'+':''}${fN(d,1)}</b> <span class="faint">${f$(d*(it.k||0))}</span>`}
+function vCtrl(){
+  const u=S.ui,cfg=ctrlCfg(),L=ctrlsSuc(),wk=isoWeek(new Date());
+  const thisWeek=L.filter(x=>x.semana===wk),open=L.filter(x=>x.estado!=='Cerrado');
+  const sel=L.find(x=>x.id===u.ctrlOpen)||(u.ctrlOpen===undefined?open[0]:null);
+  const share=ctrlShare(),cr=u.ctrlCr||'mix';
+  const prog=CR4.map(k=>{const P=ctrlProgress(k),per=cr==='mix'?share[k]:cr===k?cfg.n:0;const pct=P.U.length?P.hechas/P.U.length*100:0;
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${CR[k][0]}</b><span class="faint">vuelta ${P.V.n}</span></div>
+      <div style="font-variant-numeric:tabular-nums"><b>${fN(P.hechas)}</b> de ${fN(P.U.length)} controladas · faltan ${fN(P.pend.length)}</div>
+      <div style="height:7px;border-radius:4px;background:var(--surface2);overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--accent)"></div></div>
+      <div class="st">${!P.U.length?'Sin piezas en este criterio.':!P.pend.length?'Vuelta completa: el próximo control empieza otra.':per?`A ${per} por semana: ${fN(Math.ceil(P.pend.length/per))} semanas para cerrar la vuelta.`:'No entra en el criterio elegido.'}</div></div>`}).join('');
+  const stockOld=S.D.stock&&S.D.stock.meta.fecha&&(Date.now()-new Date(S.D.stock.meta.fecha+'T12:00:00'))/864e5>3;
+  let det='';
+  if(sel){const closed=sel.estado==='Cerrado',R=ctrlSum(sel);
+    det=`<section class="panel" id="ctrlDet"><div class="panel-h"><div><h2>Control del ${fD(sel.fecha.slice(0,10))} · ${esc(CR[sel.criterio]?CR[sel.criterio][0]:sel.criterio)}</h2><p class="sub">${esc(sel.suc)} · semana ${esc(sel.semana.split('-S')[1])} · stock del sistema al ${fD(sel.stockFecha)} · ${esc(sel.usuario||'')} · <b>${esc(sel.estado)}</b>${sel.cerradoAt?` el ${fD(sel.cerradoAt.slice(0,10))}`:''}</p></div>
+      <div class="toolbar"><button class="btn" data-act="ctrlPrint">Imprimir planilla</button><button class="btn" data-act="ctrlXls">Exportar Excel</button>
+      ${closed?(isAdmin()?`<button class="btn" data-act="ctrlReopen">Reabrir</button>`:''):`<button class="btn" data-act="ctrlSync" title="Reemplaza el stock del sistema por el último cargado (${fD(S.D.stock&&S.D.stock.meta.fecha)})">Tomar stock actual</button><button class="btn pri" data-act="ctrlClose"${R.cont<R.n?' title="Hay piezas sin contar"':''}>Cerrar control</button>`}
+      ${u.ctrlDel===sel.id?`<span class="confirm">¿Eliminar este control? <button class="btn sm danger" data-act="ctrlDelYes">Sí, eliminar</button><button class="btn sm" data-act="ctrlDelNo">No</button></span>`:(!closed||isAdmin()?`<button class="btn danger" data-act="ctrlDel">Eliminar</button>`:'')}</div></div>
+      ${!closed&&R.cont<R.n&&u.ctrlCloseAsk===sel.id?`<div class="note warn" style="margin-bottom:12px">Faltan contar ${R.n-R.cont} piezas. Si cerrás igual, quedan como no controladas y vuelven a salir en un próximo control. <button class="btn sm pri" data-act="ctrlCloseYes">Cerrar igual</button> <button class="btn sm" data-act="ctrlCloseNo">Seguir contando</button></div>`:''}
+      ${!closed&&stockOld?`<div class="note warn" style="margin-bottom:12px">El stock del sistema es del ${fD(S.D.stock.meta.fecha)}. Para que las diferencias sean reales, cargá el stock del día en <button class="btn sm" data-tab="depositos">Stock por depósito</button> y tocá <b>Tomar stock actual</b> antes de contar.</div>`:''}
+      <div class="tiles" id="ctrlSum" style="margin-bottom:12px">${ctrlSumHtml(sel)}</div>
+      <div class="tw"><table><thead><tr><th>Ubicación</th><th>Código</th><th>Descripción</th><th>Origen</th><th>Criterio</th><th class="n">Sistema</th><th class="n">Contado</th><th class="n">Diferencia</th><th class="n">Costo</th><th>Observación</th></tr></thead><tbody>
+      ${sel.items.map((it,i)=>`<tr><td>${esc(it.u)||'<span class="faint">–</span>'}</td><td class="code">${esc(it.c)}</td><td class="desc" title="${esc(it.d)}">${esc(it.d)}</td><td>${esc(it.o||'')}</td><td><span class="tag">${esc(CR[it.cr]?CR[it.cr][0]:'')}</span></td><td class="n">${fN(it.s,1)}</td>
+        <td class="n">${closed?(it.q==null?'<span class="faint">sin contar</span>':`<b>${fN(it.q,1)}</b>`):`<input class="fin${it.q!=null?' chg':''}" type="number" min="0" step="1" inputmode="numeric" data-cnt="${i}" value="${it.q==null?'':it.q}" aria-label="Contado ${esc(it.c)}">`}</td>
+        <td class="n" data-cdif="${i}">${ctrlDifCell(it)}</td><td class="n">${it.k==null?'–':f$(it.k)}</td>
+        <td>${closed?esc(it.nt||''):`<input type="text" data-cnota="${i}" value="${esc(it.nt||'')}" placeholder="opcional" style="width:180px;padding:3px 6px">`}</td></tr>`).join('')}</tbody></table></div>
+      ${closed?'':`<p class="faint" style="margin:8px 0 0">Cargá lo contado y pasá con Enter a la siguiente. Se guarda solo. Si no hay ninguna, poné 0.</p>`}</section>`}
+  const hist=L.length?`<div class="tw" style="max-height:420px"><table><thead><tr><th>Fecha</th><th>Semana</th><th>Criterio</th><th>Estado</th><th class="n">Piezas</th><th class="n">Contadas</th><th class="n">Exactitud</th><th class="n">Faltante</th><th class="n">Sobrante</th><th>Usuario</th></tr></thead><tbody>
+    ${L.map(x=>{const R=ctrlSum(x);return `<tr data-ctrl="${x.id}" style="cursor:pointer"${x.id===(sel&&sel.id)?' class="trf"':''}><td>${fD(x.fecha.slice(0,10))}</td><td>${esc(x.semana.split('-S')[1])}</td><td>${esc(CR[x.criterio]?CR[x.criterio][0]:x.criterio)}</td><td>${x.estado==='Cerrado'?'<span class="pill p-ok">Cerrado</span>':'<span class="pill p-bajo">Abierto</span>'}</td><td class="n">${R.n}</td><td class="n">${R.cont}</td><td class="n">${R.exact==null?'–':fN(R.exact,0)+' %'}</td><td class="n">${f$(R.fal$)}</td><td class="n">${f$(R.sob$)}</td><td>${esc(x.usuario||'')}</td></tr>`}).join('')}</tbody></table></div>`
+    :`<div class="empty">Todavía no hay controles en ${esc(S.P.sucursal)}.</div>`;
+  const cerr=L.filter(x=>x.estado==='Cerrado');const tot=cerr.reduce((a,x)=>{const R=ctrlSum(x);a.c+=R.cont;a.ok+=R.ok;a.f+=R.fal$;a.s+=R.sob$;return a},{c:0,ok:0,f:0,s:0});
+  return `<section class="panel"><div class="panel-h"><div><h2>Control de stock · ${esc(S.P.sucursal)}</h2><p class="sub">Un conteo por semana de pocas piezas. Cada control elige piezas que todavía no se contaron en la vuelta actual del criterio, así se va rotando y con el tiempo se controla todo el stock. Al terminar una vuelta empieza otra.</p></div></div>
+    <div class="tiles" style="margin-bottom:14px"><div class="tile"><div class="l">Esta semana (${esc(wk.split('-S')[1])})</div><div class="v" style="color:${thisWeek.length?'var(--ok)':'var(--warn)'}">${thisWeek.length?(thisWeek.some(x=>x.estado==='Cerrado')?'Hecho':'En curso'):'Pendiente'}</div><div class="n">${thisWeek.length?thisWeek.length+' control'+(thisWeek.length>1?'es':''):'todavía no se generó'}</div></div>
+      <div class="tile"><div class="l">Controles cerrados</div><div class="v">${cerr.length}</div><div class="n">${fN(tot.c)} piezas contadas</div></div>
+      <div class="tile"><div class="l">Exactitud acumulada</div><div class="v">${tot.c?fN(tot.ok/tot.c*100,0)+' %':'–'}</div></div>
+      <div class="tile"><div class="l">Faltante acumulado</div><div class="v" style="color:${tot.f?'var(--crit)':'inherit'}">${f$(tot.f)}</div><div class="n">sobrante ${f$(tot.s)}</div></div></div>
+    <div class="toolbar" style="margin-bottom:14px"><label class="suc" for="ctrlCr">Criterio</label><select id="ctrlCr">${Object.entries(CR).map(([k,o])=>`<option value="${k}"${k===cr?' selected':''}>${o[0]}</option>`).join('')}</select>
+      <label class="suc" for="ctrlN">Piezas</label><input type="number" id="ctrlN" min="1" max="200" value="${cfg.n}" style="width:70px">
+      <label class="suc" for="ctrlTop" title="Cuántas piezas entran en Más vendidos y Más caros vendidos">Top vendidos / caros</label><input type="number" id="ctrlTop" min="10" max="5000" value="${cfg.top}" style="width:80px">
+      <button class="btn pri" data-act="ctrlGen"${S.D.stock&&db?'':' disabled'}>Generar control${thisWeek.length?' (ya hay uno esta semana)':' de esta semana'}</button></div>
+    <p class="faint" style="margin:-6px 0 12px">${esc(CR[cr][1])}${cr==='mix'?`: ${CR4.map(k=>share[k]+' '+CR[k][0].toLowerCase()).join(', ')}`:''}. ${S.D.stock?`Stock del sistema al ${fD(S.D.stock.meta.fecha)}.`:'<b>Falta cargar el stock.</b>'}</p>
+    <div class="cards">${prog}</div></section>
+  ${det}
+  <section class="panel"><div class="panel-h"><div><h3>Controles anteriores</h3><p class="sub">Tocá uno para verlo o seguir cargándolo.</p></div>${L.length?'<button class="btn" data-act="ctrlHistXls">Exportar todo</button>':''}</div>${hist}</section>`;
+}
+function ctrlSel(){return (S.ctrls||[]).find(x=>x.id===S.ui.ctrlOpen)||ctrlsSuc().find(x=>x.estado!=='Cerrado')}
+function ctrlSave(c){const id=c.id,o=Object.assign({},c);delete o.id;return db.doc('controles/'+id).set(o).catch(e=>toast('No se pudo guardar: '+(e.message||e.code)))}
+function ctrlRows(c){return [['Ubicación','Código','Descripción','Origen','Criterio','Sistema','Contado','Diferencia','Costo','$ diferencia','Observación'],...c.items.map(it=>{const d=it.q==null?'':it.q-it.s;return [it.u,it.c,it.d,it.o,CR[it.cr]?CR[it.cr][0]:'',it.s,it.q==null?'':it.q,d,it.k==null?'':r2(it.k),d===''?'':r2(d*(it.k||0)),it.nt||'']})]}
+function ctrlXls(c){exportXlsx(`Control stock ${c.suc} ${c.fecha.slice(0,10)}.xlsx`,[{name:'Control',rows:ctrlRows(c)}])}
+function ctrlHistXls(){const rows=[['Fecha','Semana','Sucursal','Criterio','Estado','Usuario','Ubicación','Código','Descripción','Sistema','Contado','Diferencia','Costo','$ diferencia','Observación']];
+  for(const c of ctrlsSuc())for(const it of c.items){const d=it.q==null?'':it.q-it.s;rows.push([c.fecha.slice(0,10),c.semana,c.suc,CR[c.criterio]?CR[c.criterio][0]:c.criterio,c.estado,c.usuario||'',it.u,it.c,it.d,it.s,it.q==null?'':it.q,d,it.k==null?'':r2(it.k),d===''?'':r2(d*(it.k||0)),it.nt||''])}
+  exportXlsx(`Controles de stock ${S.P.sucursal} ${stamp()}.xlsx`,[{name:'Controles',rows}])}
+function ctrlPrint(c){
+  const w=window.open('','_blank');if(!w){toast('El navegador bloqueó la ventana: permití ventanas emergentes.');return}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Control de stock ${esc(c.suc)} ${fD(c.fecha.slice(0,10))}</title><style>body{font:12px system-ui,sans-serif;margin:18px;color:#000}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 10px;color:#444}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:6px 7px;text-align:left}th{background:#eee}td.n{text-align:right}td.box{width:70px}td.obs{width:150px}.code{font-family:ui-monospace,monospace}.f{margin-top:24px;display:flex;gap:40px}.f div{border-top:1px solid #000;padding-top:4px;width:200px}@media print{body{margin:8mm}}</style></head><body>
+    <h1>Control de stock · ${esc(c.suc)}</h1><p>${fD(c.fecha.slice(0,10))} · semana ${esc(c.semana.split('-S')[1])} · ${esc(CR[c.criterio]?CR[c.criterio][0]:c.criterio)} · ${c.items.length} piezas. Contar sin mirar el sistema y anotar la cantidad física.</p>
+    <table><thead><tr><th>#</th><th>Ubicación</th><th>Código</th><th>Descripción</th><th>Contado</th><th>Observación</th></tr></thead><tbody>
+    ${c.items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(it.u)}</td><td class="code">${esc(it.c)}</td><td>${esc(it.d)}</td><td class="box"></td><td class="obs"></td></tr>`).join('')}</tbody></table>
+    <div class="f"><div>Contó</div><div>Controló</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
 /* ---------- Vista: Actividad (solo admin) ---------- */
 function vAct2(){
   const L=S.act||[],u=S.ui;const users=[...new Set(L.map(x=>x.usuario))].sort();
@@ -2577,13 +2702,14 @@ async function saveSug(name){
 
 /* ---------- Eventos ---------- */
 document.addEventListener('click',e=>{
-  const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd],[data-fybmode],[data-fybrm]');if(!t)return;
+  const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd],[data-fybmode],[data-fybrm],[data-ctrl]');if(!t)return;
   const u=S.ui;
   if(t.dataset.tab){S.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
   if(t.dataset.view){u.view=t.dataset.view;u.sort=u.view==='pedir'?'$':'code';u.dir=u.view==='pedir'?-1:1;render();return}
   if(t.dataset.sort){const k=t.dataset.sort;if(u.sort===k)u.dir*=-1;else{u.sort=k;u.dir=['code','desc'].includes(k)?1:-1}render();return}
   if(t.dataset.open){u.openSaved=u.openSaved===t.dataset.open?null:t.dataset.open;u.confirmDel=null;render();return}
   if(t.dataset.fybmode){u.fybMode=t.dataset.fybmode;render();return}
+  if(t.dataset.ctrl){u.ctrlOpen=u.ctrlOpen===t.dataset.ctrl?null:t.dataset.ctrl;u.ctrlDel=null;u.ctrlCloseAsk=null;render();const d=$('#ctrlDet');d&&u.ctrlOpen&&d.scrollIntoView({block:'start',behavior:'smooth'});return}
   if(t.dataset.fybrm){const c=t.dataset.fybrm;saveFybItems(S.fyb.items.filter(x=>x[1]!==c)).then(()=>{logAct('Quitó de filtros y bujías',c,'Todas');render();toast(c+' quitada de la lista.')}).catch(e=>toast('No se pudo: '+(e.message||e.code)));return}
   if(t.dataset.addstd){logAct('Agregó al estándar',t.dataset.addstd);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),t.dataset.addstd])];saveStd();recompute();render();return}
   if(t.dataset.rmstd){logAct('Quitó del estándar',t.dataset.rmstd);const k=stdKey();S.stdBy[k]=(S.stdBy[k]||[]).filter(c=>c!==t.dataset.rmstd);saveStd();recompute();render();toast(t.dataset.rmstd+' quitada del estándar');return}
@@ -2601,6 +2727,20 @@ document.addEventListener('click',e=>{
   else if(a==='depoXls')depoXls();
   else if(a==='fybXls')fybXls();
   else if(a==='depoHist')depoHist();
+  else if(a==='ctrlGen'){t.disabled=true;ctrlGen().finally(()=>{t.disabled=false})}
+  else if(a==='ctrlPrint'){const c=ctrlSel();c&&ctrlPrint(c)}
+  else if(a==='ctrlXls'){const c=ctrlSel();c&&ctrlXls(c)}
+  else if(a==='ctrlHistXls')ctrlHistXls();
+  else if(a==='ctrlSync'){const c=ctrlSel();if(!c)return;const st=ctrlStock();c.items.forEach(it=>{const x=st.get(it.c);it.s=x?x.q:0;if(x&&x.cost!=null)it.k=x.cost});c.stockFecha=S.D.stock?S.D.stock.meta.fecha:c.stockFecha;ctrlSave(c);render();toast('Stock del sistema actualizado al '+fD(c.stockFecha)+'.')}
+  else if(a==='ctrlClose'||a==='ctrlCloseYes'){const c=ctrlSel();if(!c)return;const R=ctrlSum(c);if(a==='ctrlClose'&&R.cont<R.n){u.ctrlCloseAsk=c.id;render();return}
+    const pend=c.items.filter(it=>it.q==null).length;c.items=c.items.filter(it=>it.q!=null);c.estado='Cerrado';c.cerradoAt=new Date().toISOString();c.cerradoPor=ME()?ME().email:'';u.ctrlCloseAsk=null;
+    if(!c.items.length){db.doc('controles/'+c.id).delete();u.ctrlOpen=null;toast('No había nada contado: se eliminó el control.');return}
+    ctrlSave(c).then(()=>render());const R2=ctrlSum(c);logAct('Cerró control de stock',`${R2.cont} piezas · exactitud ${fN(R2.exact,0)} % · faltante ${f$(R2.fal$)}`,c.suc);toast(`Control cerrado: exactitud ${fN(R2.exact,0)} %${pend?` (${pend} sin contar vuelven a salir)`:''}.`)}
+  else if(a==='ctrlCloseNo'){u.ctrlCloseAsk=null;render()}
+  else if(a==='ctrlReopen'){const c=ctrlSel();if(!c)return;c.estado='Abierto';delete c.cerradoAt;ctrlSave(c).then(()=>render())}
+  else if(a==='ctrlDel'){const c=ctrlSel();if(c){u.ctrlDel=c.id;u.ctrlOpen=c.id;render()}}
+  else if(a==='ctrlDelNo'){u.ctrlDel=null;render()}
+  else if(a==='ctrlDelYes'){const id=u.ctrlDel;u.ctrlDel=null;u.ctrlOpen=null;db.doc('controles/'+id).delete().then(()=>{logAct('Eliminó control de stock',id);toast('Control eliminado.')}).catch(e=>toast('No se pudo eliminar: '+(e.message||e.code)))}
   else if(a==='exportSaved')exportSaved();
   else if(a==='askDel'){u.confirmDel=u.openSaved;render()}
   else if(a==='noDel'){u.confirmDel=null;render()}
@@ -2637,12 +2777,22 @@ document.addEventListener('change',e=>{
   if(t.dataset.map){S.pending.map[t.dataset.map]=+t.value;render();return}
   if(t.dataset.msuc!=null){S.pending.auto.multi[+t.dataset.msuc].sucApp=t.value;return}
   if(t.id==='depMet'){S.ui.depMet=t.value;render();return}
+  if(t.id==='ctrlCr'){u.ctrlCr=t.value;render();return}
+  if(t.id==='ctrlN'||t.id==='ctrlTop'){const c=ctrlCfg(),v=Math.round(num(t.value));if(t.id==='ctrlN')c.n=Math.min(200,Math.max(1,v||15));else c.top=Math.min(5000,Math.max(10,v||100));saveCtrlCfg();render();return}
+  if(t.dataset.cnt!=null||t.dataset.cnota!=null){const c=ctrlSel();if(!c||c.estado==='Cerrado')return;
+    if(t.dataset.cnota!=null){c.items[+t.dataset.cnota].nt=t.value.trim();ctrlSave(c);return}
+    const i=+t.dataset.cnt,it=c.items[i];it.q=t.value===''?null:Math.max(0,num(t.value));t.classList.toggle('chg',it.q!=null);
+    const cell=document.querySelector(`[data-cdif="${i}"]`);if(cell)cell.innerHTML=ctrlDifCell(it);const sm=$('#ctrlSum');if(sm)sm.innerHTML=ctrlSumHtml(c);ctrlSave(c);return}
   if(t.id==='fybSuc'||t.id==='fybDesde'){S.ui[t.id]=t.value;render();return}
   if(t.dataset.pc){S.P[t.dataset.pc]=t.checked;saveParams();recompute();return}
   if(t.dataset.transf){const k=t.dataset.transf;S.sucCfg[k]=Object.assign({},S.sucCfg[k],{transf:t.checked});saveSucs();recompute();render();return}
   if(t.dataset.fam){const s=new Set(S.P.exclFam||[]);t.checked?s.add(t.dataset.fam):s.delete(t.dataset.fam);S.P.exclFam=[...s];saveParams();recompute();return}
   if(t.dataset.p){render();return}
   if(t.id==='estSel'){const sv=S.saved.find(x=>x.id===t.dataset.id);logAct('Cambió estado de pedido',`${sv?sv.nombre:''} → ${t.value}`,sv&&sv.sucursal);db&&db.doc('sugeridos/'+t.dataset.id).update({estado:t.value}).catch(e=>toast('No se pudo actualizar: '+(e.message||e.code)));return}
+});
+document.addEventListener('keydown',e=>{
+  const t=e.target;if(e.key!=='Enter'||!t.dataset||t.dataset.cnt==null)return;e.preventDefault();
+  const n=document.querySelector(`[data-cnt="${+t.dataset.cnt+1}"]`);if(n){n.focus();n.select()}else t.blur();
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();
