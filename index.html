@@ -2481,9 +2481,47 @@ function vAuto(p){
     ${!isV&&a.multi?`<h3 style="margin:4px 0 8px">El informe trae ${a.multi.length} sucursales</h3><div class="tw" style="max-height:none;margin-bottom:12px"><table><thead><tr><th>Autologica</th><th class="n">Piezas</th><th>Guardar en</th></tr></thead><tbody>${a.multi.map((d,i)=>`<tr><td>${esc(d.suc)}</td><td class="n">${fN(d.rows.length)}</td><td><select data-msuc="${i}">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===d.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value=""${d.sucApp===''?' selected':''}>No guardar</option></select></td></tr>`).join('')}</tbody></table></div>`:''}
     ${!isV&&a.depos&&a.depos.length?`<p class="faint" style="margin:0 0 10px">Además se guarda la foto del día de ${a.depos.map(d=>esc(depName(d.codigo,d.nombre))).join(', ')} para <b>Stock por depósito</b>.</p>`:''}
     <div class="map"${!isV&&a.multi?' hidden':''}><label>Guardar en la sucursal<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select>${!isAdmin()&&a.suc&&S.sucMap[a.suc]&&S.sucMap[a.suc]!==S.P.sucursal?`<div class="note warn">Este informe es de <b>${esc(S.sucMap[a.suc])}</b> (Autologica: ${esc(a.suc)}), pero tu usuario carga ${esc(S.P.sucursal)}. Revisá que bajaste el archivo de tu sucursal.</div>`:''}<small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
-    <h3 style="margin:14px 0 8px">Primeras filas</h3>
-    <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    ${isV?`<h3 style="margin:14px 0 8px">Primeras filas</h3>
+    <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:stPrev(p)}
   </section>`;
+}
+/* Stock antes de guardar: piezas de mayor a menor $ a costo, con stock y costo editables.
+   Un cambio corrige el stock de la sucursal, la planilla por depósito y la foto del depósito. */
+function stSucs(a){return a.multi?a.multi.map(x=>x.suc):[a.suc]}
+function stRows(a,suc){return a.multi?(a.multi.find(x=>x.suc===suc)||{rows:[]}).rows:a.rows}
+function stPrev(p){
+  const a=p.auto,u=p.ui||(p.ui={}),sucs=stSucs(a),suc=sucs.includes(u.suc)?u.suc:sucs[0],rows=stRows(a,suc),E=p.edits||(p.edits=new Map());
+  const q=norm(u.q||''),lim=u.n||100;
+  const idx=rows.map((r,i)=>i).filter(i=>!q||rows[i][0].includes(q)||norm(rows[i][1]).includes(q)).sort((x,y)=>rows[y][2]*(rows[y][3]||0)-rows[x][2]*(rows[x][3]||0));
+  const tot=rows.reduce((t,r)=>t+r[2]*(r[3]||0),0),hasAct=rows.some(r=>r[4]);
+  const nE=[...E.keys()].filter(k=>k.startsWith(suc+'|')).length;
+  return `<div class="panel-h" style="margin:14px 0 8px"><div><h3>Piezas de mayor a menor $ a costo</h3><p class="sub">Podés corregir stock o costo antes de guardar: se actualiza el total, el stock de la sucursal y la planilla por depósito. Enter o salir del casillero aplica el cambio.</p></div>
+    <div class="toolbar">${sucs.length>1?`<select id="stSuc">${sucs.map(x=>`<option${x===suc?' selected':''}>${esc(x)}</option>`).join('')}</select>`:''}<input type="search" id="stQ" placeholder="Buscar código o descripción" value="${esc(u.q||'')}" style="min-width:220px">${E.size?`<button class="btn" data-act="stUndo">Deshacer ${E.size} cambio${E.size>1?'s':''}</button>`:''}</div></div>
+    <div class="tiles" style="margin-bottom:10px"><div class="tile"><div class="l">${esc(suc||'Sucursal')} · total a costo</div><div class="v">${f$(tot)}</div><div class="n">${fN(rows.length)} piezas${nE?` · <b style="color:var(--accent)">${nE} corregida${nE>1?'s':''}</b>`:''}</div></div></div>
+    <div class="tw" style="max-height:560px"><table><thead><tr><th>#</th><th>Código</th><th>Origen</th><th>Descripción</th><th class="n">Stock</th><th class="n">Cto. rep.</th><th class="n">$ a costo</th><th class="n">% del total</th>${hasAct?'<th>Actividad</th>':''}</tr></thead><tbody>
+    ${idx.slice(0,lim).map((i,k)=>{const r=rows[i],key=suc+'|'+r[0]+'¦'+r[5],ch=E.has(key),v=r[2]*(r[3]||0);
+      return `<tr${ch?' style="background:var(--accent-soft)"':''}><td class="faint">${k+1}</td><td class="code">${esc(r[0])}</td><td>${esc(r[5])}</td><td>${esc(r[1])}</td>
+      <td class="n"><input class="fin${ch&&r[2]!==E.get(key).q0?' chg':''}" style="width:70px;text-align:right" inputmode="decimal" data-st="${i}:q" value="${r[2]}"></td>
+      <td class="n"><input class="fin${ch&&r[3]!==E.get(key).c0?' chg':''}" style="width:110px;text-align:right" inputmode="decimal" data-st="${i}:c" value="${r[3]==null?'':String(r[3]).replace('.',',')}"></td>
+      <td class="n">${f$(v)}</td><td class="n">${tot?fN(v/tot*100,1)+' %':''}</td>${hasAct?`<td>${esc(r[4])}</td>`:''}</tr>`}).join('')}
+    </tbody></table></div>
+    ${idx.length>lim?`<div style="margin-top:8px"><button class="btn sm" data-act="stMore">Ver ${fN(Math.min(idx.length-lim,400))} más</button> <span class="faint">mostrando ${fN(lim)} de ${fN(idx.length)}</span></div>`:''}`;
+}
+function stEdit(p,suc,i,field,val){
+  const a=p.auto,rows=stRows(a,suc),r=rows[i];if(!r)return;
+  const key=suc+'|'+r[0]+'¦'+r[5],E=p.edits||(p.edits=new Map());if(!E.has(key))E.set(key,{suc,i,q0:r[2],c0:r[3]});
+  const q0=r[2],c0=r[3]||0,q=field==='q'?Math.max(0,val):q0,c=field==='c'?(val==null?null:Math.max(0,val)):r[3];
+  r[2]=q;r[3]=c==null?null:Math.round(c*100)/100;const c1=r[3]||0;
+  const og=r[5],k2=og==='P'?'P':og==='N'?'N':null,dq=q-q0,dv=q*c1-q0*c0;
+  for(const d of a.depos||[]){if(a.multi&&d.suc!==suc)continue;
+    const L=d.plan.filter(l=>norm(l[0])===r[0]&&String(l[1]==null?'':l[1]).trim().toUpperCase()===og);
+    let pl=0;L.forEach((l,j)=>{const lq=j===0?num(l[4])+dq:num(l[4]);l[4]=lq;
+      if(a.avanzado){l[5]=r[3];l[7]=r[3]==null?null:Math.round(lq*r[3]*100)/100;if(typeof l[8]==='number'){l[9]=Math.round(lq*l[8]*100)/100;pl=l[8]}}
+      else{l[8]=r[3]==null?'':r[3];l[7]=r[3]==null?'':Math.round(lq*r[3]*100)/100;if(typeof l[5]==='number'){l[9]=Math.round(lq*l[5]*100)/100;pl=l[5]}}});
+    if(!L.length&&og!=='P')continue;
+    for(const k of ['T',k2])if(k){const m=d[k];m.u+=dq;m.costo+=dv;m.precio+=dq*pl;if(q0>0&&q<=0)m.items--;if(q0<=0&&q>0)m.items++}
+    if(a.multi)break}
+  const e=E.get(key);if(r[2]===e.q0&&r[3]===e.c0)E.delete(key);
 }
 function vMapping(p){
   if(p.auto)return vAuto(p);
@@ -2578,6 +2616,7 @@ async function confirmAutoWings(p){
 }
 async function confirmAuto(p){
   if(p.auto.wings)return confirmAutoWings(p);
+  if(p.edits&&p.edits.size){const det=[...p.edits.values()].map(e=>{const r=stRows(p.auto,e.suc)[e.i];return `${r[0]} ${r[5]}: stock ${e.q0}→${r[2]}, costo ${e.c0==null?'–':e.c0}→${r[3]==null?'–':r[3]}`});logAct('Corrigió stock antes de guardar',`${p.fileName} · ${det.join(' · ')}`.slice(0,1500))}
   const a=p.auto,suc=(($('#autoSuc')&&$('#autoSuc').value)||p.sucApp||S.P.sucursal).trim();
   if(isAdmin()&&a.suc&&S.sucMap[a.suc]!==suc){S.sucMap[a.suc]=suc;saveSucs()}
   S.busy=true;render();
@@ -2767,6 +2806,8 @@ document.addEventListener('click',e=>{
   else if(a==='delSaved'){const id=u.confirmDel;u.confirmDel=null;u.openSaved=null;db&&db.doc('sugeridos/'+id).delete().then(()=>toast('Pedido eliminado.')).catch(e=>toast('No se pudo eliminar: '+(e.message||e.code)))}
   else if(a==='addAllCand'){const k=stdKey();const add=S.res.lines.filter(l=>l.cand).map(l=>l.code);logAct('Armó estándar con la regla',`${add.length} piezas`);S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),...add])];saveStd();recompute();render();toast(`${add.length} piezas agregadas al estándar.`)}
   else if(a==='cancelMap'){S.pending=null;render()}
+  else if(a==='stMore'){const pu=S.pending.ui||(S.pending.ui={});pu.n=(pu.n||100)+400;const y=window.scrollY;render();window.scrollTo(0,y)}
+  else if(a==='stUndo'){const p=S.pending;for(const e of [...p.edits.values()].reverse()){const r=stRows(p.auto,e.suc)[e.i];stEdit(p,e.suc,e.i,'q',e.q0);stEdit(p,e.suc,e.i,'c',e.c0)}p.edits.clear();const y=window.scrollY;render();window.scrollTo(0,y)}
   else if(a==='wingsBase'){(async()=>{try{const suc=S.P.sucursal;await deleteDataset(dsName('wings',suc));if(S.cache[suc])S.cache[suc].wings=null;S.D.wings=wingsFor(suc,S.cache[suc]||{});recompute();render();toast(S.D.wings?'Se usan otra vez los pedidos Wings del Excel base.':'Pedidos Wings borrados para '+suc+'.')}catch(e){toast('No se pudo: '+(e.message||e.code))}})()}
   else if(a==='copyStd'){const from=t.dataset.from;logAct('Copió estándar',`desde ${from}`);S.stdBy[stdKey()]=[...(S.stdBy[from]||[])];saveStd();recompute();render();toast(`Se copiaron ${S.stdBy[stdKey()].length} piezas del estándar de ${from}.`)}
   else if(a==='rmSuc'){const s=t.dataset.suc;if(S.sucs.length<2)return;S.sucs=S.sucs.filter(x=>x!==s);saveSucs();if(S.P.sucursal===s)switchSuc(S.sucs[0]);else render()}
@@ -2776,12 +2817,14 @@ document.addEventListener('click',e=>{
 let qT;
 document.addEventListener('input',e=>{
   const t=e.target,u=S.ui;
+  if(t.id==='stQ'&&S.pending){const pu=S.pending.ui||(S.pending.ui={});pu.q=t.value;pu.n=100;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart,y=window.scrollY;render();window.scrollTo(0,y);const n=$('#stQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.id==='fybQ'){u.fybQ=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=$('#fybQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.id==='q'||t.id==='stdQ'||t.id==='candQ'){u[t.id]=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=document.getElementById(t.id);if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.dataset.fin){const l=S.byCode.get(t.dataset.fin);let v=Math.max(0,num(t.value));if(v===l.sug)delete S.finals[l.code];else S.finals[l.code]=v;t.classList.toggle('chg',S.finals[l.code]!=null);
     const c=document.querySelector(`[data-tot="${CSS.escape(l.code)}"]`);if(c)c.textContent=v?f$(v*(l.cost||0)):'';updateTotals();saveDraft();return}
   if(t.dataset.p){const v=num(t.value);S.P[t.dataset.p]=v;saveParams();recompute();return}
 });
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.st){e.preventDefault();e.target.blur()}});
 document.addEventListener('change',e=>{
   const t=e.target,u=S.ui;
   if(t.id==='restoreFile'){const f=t.files[0];t.value='';if(!f)return;f.text().then(window.__restore).then(()=>{toast('Respaldo restaurado. Recargando…');setTimeout(()=>location.reload(),800)}).catch(e=>toast('No se pudo restaurar: '+e.message));return}
@@ -2796,6 +2839,9 @@ document.addEventListener('change',e=>{
   if(t.id==='mapHdr'){S.pending.h=Math.max(0,num(t.value)-1);autoMap();render();return}
   if(t.dataset.map){S.pending.map[t.dataset.map]=+t.value;render();return}
   if(t.dataset.msuc!=null){S.pending.auto.multi[+t.dataset.msuc].sucApp=t.value;return}
+  if(t.dataset.st&&S.pending&&S.pending.auto){const p=S.pending,[i,f]=t.dataset.st.split(':'),sucs=stSucs(p.auto),suc=sucs.includes((p.ui||{}).suc)?p.ui.suc:sucs[0];const raw=String(t.value).trim();
+    stEdit(p,suc,+i,f,f==='c'&&raw===''?null:num(raw));const y=window.scrollY;render();window.scrollTo(0,y);return}
+  if(t.id==='stSuc'&&S.pending){(S.pending.ui||(S.pending.ui={})).suc=t.value;S.pending.ui.n=100;render();return}
   if(t.id==='depMet'){S.ui.depMet=t.value;render();return}
   if(t.id==='ctrlCr'){u.ctrlCr=t.value;render();return}
   if(t.id==='ctrlN'||t.id==='ctrlTop'){const c=ctrlCfg(),v=Math.round(num(t.value));if(t.id==='ctrlN')c.n=Math.min(200,Math.max(1,v||15));else c.top=Math.min(5000,Math.max(10,v||100));saveCtrlCfg();render();return}
