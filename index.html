@@ -1462,7 +1462,8 @@ function aggVentas(raw) {
 
 /* Informes de Autologica (exportación .xls de reportes) */
 function detectAutologica(aoa) {
-  const t = String((aoa[0] || [])[0] || '').trim().toLowerCase();
+  /* el título puede estar en cualquier celda de la primera fila (en el Avanzado viene en la 3ª columna) */
+  const t = String((aoa[0] || []).find(c => typeof c === 'string' && c.trim()) || '').trim().toLowerCase();
   const src = aoa.slice(0, 5).map(r => (r || []).join(' ')).join(' ');
   if (!/autologica/i.test(src)) return null;
   if (t.startsWith('ventas de repuestos')) return 'ventas';
@@ -1529,37 +1530,50 @@ function parseFybExcel(aoa) {
 /* días hábiles del período de un informe (20 por mes) */
 function diasPeriodo(desde, hasta) { if (!desde || !hasta) return null; const d = (new Date(hasta) - new Date(desde)) / 864e5 + 1; return d > 0 ? Math.round(d / 30.44 * 20 * 10) / 10 : null; }
 function parseAutologicaStock(aoa) {
-  /* Stock a costo > Detallado. Puede traer varias sucursales y depósitos (filas "Sucursal:" y "Depósito:"):
-     se arma el stock de cada sucursal y una foto por depósito (para la evolución y la planilla por depósito). */
-  let suc = '', fecha = null, dep = null; const bySuc = new Map(), deps = new Map();
+  /* Stock a costo > Avanzado o > Detallado. Puede traer varias sucursales y depósitos (filas "Sucursal:" y "Depósito:"):
+     se arma el stock de cada sucursal y una foto por depósito (para la evolución y la planilla por depósito).
+     Columnas según el informe:
+       Avanzado:  0 repuesto, 1 origen, 2 descripción, 3 ubicación, 4 stock, 5 costo reposición, 6 moneda ("x" = pesos),
+                  7 stock a costo, 8 precio de lista, 9 stock a precio (luego datos de ventas). Sin actividad.
+       Detallado: 0 repuesto, 1 origen, 2 descripción, 4 ubicación, 5 actividad, 6 stock, 7 costo, 8 stock a costo, 9 precio, 10 stock a precio. */
+  let suc = '', fecha = null, hasta = null, dep = null; const bySuc = new Map(), deps = new Map();
   const z = () => ({ items: 0, u: 0, costo: 0, precio: 0 });
+  const hi = aoa.findIndex(r => r && String(r[0] == null ? '' : r[0]).trim().toLowerCase() === 'repuesto');
+  const H = hi >= 0 ? aoa[hi].map(c => String(c == null ? '' : c).trim().toLowerCase()) : [];
+  const avz = H[3] === 'ubicación' || H[3] === 'ubicacion' ? H[4] === 'stock' : false;
+  const C = avz ? { ub: 3, act: -1, q: 4, cu: 5, val: 7, pl: 8, pv: 9 } : { ub: 4, act: 5, q: 6, cu: 7, val: 8, pl: 9, pv: 10 };
   for (const r of aoa) {
     if (!r) continue;
-    if (r[2] === 'Emitido:' && !fecha) fecha = dmy(r[3]);
+    if (!fecha) { const ie = r.indexOf('Emitido:'); if (ie >= 0) { const v = r[ie + 1]; fecha = v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : dmy(v); } }
+    if (r[0] === 'Filtrado por:') { const m = String(r[1] || '').match(/entre\s+(\S+)\s+y\s+(\S+?);/); if (m) hasta = dmy(m[2]); continue; }
     if (r[1] === 'Sucursal:') { suc = String(r[3] || '').trim(); continue; }
     if (r[1] === 'Depósito:' || r[1] === 'Deposito:') { const c = String(r[2] == null ? '' : r[2]).trim(); dep = deps.get(c);
       if (!dep) { dep = { codigo: c, nombre: String(r[3] || '').trim(), suc, N: z(), P: z(), T: z(), plan: [] }; deps.set(c, dep); } continue; }
-    const a = r[0];
-    if (a != null && a !== '' && a !== '*' && typeof r[6] === 'number' && (typeof r[7] === 'number' || r[7] == null)) {
+    if (typeof r[1] === 'string' && /^Total (dep|suc|conc)/.test(r[1])) { if (/^Total dep/.test(r[1])) dep = null; continue; }
+    const a = r[0], q = r[C.q];
+    if (a != null && a !== '' && a !== '*' && typeof q === 'number' && (typeof r[C.cu] === 'number' || r[C.cu] == null || r[C.cu] === '')) {
       const code = norm(a); if (!code) continue;
       const og = String(r[1] || '').trim().toUpperCase(), ck = code + '¦' + og;
-      const val = typeof r[8] === 'number' ? r[8] : (typeof r[7] === 'number' ? r[7] * r[6] : null);
+      const val = typeof r[C.val] === 'number' ? r[C.val] : (typeof r[C.cu] === 'number' ? r[C.cu] * q : null);
       let rows = bySuc.get(suc); if (!rows) { rows = new Map(); bySuc.set(suc, rows); }
       const e = rows.get(ck);
-      if (e) { e[2] += r[6]; if (val != null) e[5] = (e[5] || 0) + val; }
-      else rows.set(ck, [code, String(r[2] || '').trim(), r[6], null, String(r[5] || '').trim(), val, og]);
+      if (e) { e[2] += q; if (val != null) e[5] = (e[5] || 0) + val; }
+      else rows.set(ck, [code, String(r[2] || '').trim(), q, null, C.act >= 0 ? String(r[C.act] || '').trim() : '', val, og]);
       if (dep) {
-        const pv = typeof r[10] === 'number' ? r[10] : (typeof r[9] === 'number' ? r[9] * r[6] : 0);
-        for (const k of ['T', og === 'P' ? 'P' : og === 'N' ? 'N' : null]) if (k) { const m = dep[k]; if (r[6] > 0) m.items++; m.u += r[6]; m.costo += val || 0; m.precio += pv || 0; }
-        if (og !== 'P') dep.plan.push([String(a).trim(), og, String(r[2] || '').trim(), r[4] == null ? '' : String(r[4]).trim(), r[6], typeof r[9] === 'number' ? r[9] : '', '', val == null ? '' : val, typeof r[7] === 'number' ? r[7] : '', typeof r[10] === 'number' ? r[10] : '']);
+        const pv = typeof r[C.pv] === 'number' ? r[C.pv] : (typeof r[C.pl] === 'number' ? r[C.pl] * q : 0);
+        for (const k of ['T', og === 'P' ? 'P' : og === 'N' ? 'N' : null]) if (k) { const m = dep[k]; if (q > 0) m.items++; m.u += q; m.costo += val || 0; m.precio += pv || 0; }
+        /* planilla por depósito: sin origen P; en el Avanzado las 10 primeras columnas tal cual vienen (sin recortar ni convertir) */
+        if (og !== 'P') dep.plan.push(avz ? r.slice(0, 10).concat(Array(10).fill(null)).slice(0, 10).map(v => v === undefined || v === '' ? null : v)
+          : [String(a).trim(), og, String(r[2] || '').trim(), r[4] == null ? '' : String(r[4]).trim(), q, typeof r[9] === 'number' ? r[9] : '', '', val == null ? '' : val, typeof r[7] === 'number' ? r[7] : '', typeof r[10] === 'number' ? r[10] : '']);
       }
     }
   }
+  if (!fecha) fecha = hasta;
   const fin = m => { const out = [...m.values()]; for (const e of out) { e[3] = e[5] != null && e[2] > 0 ? Math.round(e[5] / e[2] * 100) / 100 : null; e[5] = e[6]; e.length = 6; } return out; };
   const sucs = [...bySuc.entries()].map(([k, m]) => ({ suc: k, rows: fin(m) }));
   const depos = [...deps.values()];
   const one = sucs[0] || { suc, rows: [] };
-  return { rows: one.rows, suc: one.suc, fecha, multi: sucs.length > 1 ? sucs : null, depos };
+  return { rows: one.rows, suc: one.suc, fecha, multi: sucs.length > 1 ? sucs : null, depos, avanzado: avz };
 }
 
 /* Descarga de pedidos de Wings (hoja con encabezados Fecha pedido, Pieza pedida, # Pedida, ...) */
@@ -2201,7 +2215,7 @@ function vDepos(){
   const last=c=>{const fs=fechas.filter(f=>at(f,c));return [at(fs[fs.length-1],c),fs.length>1?at(fs[fs.length-2],c):null]};
   const delta=(a,b)=>{if(!b)return'<span class="faint">primera foto</span>';const d=a[k][met]-b[k][met],pc=b[k][met]?d/b[k][met]*100:0;return `<span style="color:${d>0?'var(--warn)':d<0?'var(--ok)':'var(--muted)'}">${d>0?'+':''}${M[1](d)} (${d>0?'+':''}${fN(pc,1)} %)</span> <span class="faint">vs ${fD(b.fecha)}</span>`};
   const orig=k==='N'?'origen N':k==='P'?'origen P':'todos los orígenes';
-  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Detallado</i> con los tres depósitos: además actualiza el stock de cada sucursal.</p></div>
+  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Avanzado</i> (o el <i>Detallado</i>) con los tres depósitos: baja la planilla por depósito y además actualiza el stock de cada sucursal.</p></div>
     <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label><button class="btn" data-act="depoXls"${codes.length?'':' disabled'}>Planilla por depósito</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
     ${codes.length?`<div class="tiles">${codes.map(c=>{const [a,b]=last(c);return `<div class="tile"><div class="l">${esc(depName(c,a.nombre))} · ${esc(a.sucursal||a.sucAutologica)}</div><div class="v">${M[1](a[k][met])}</div><div class="n">${fN(a[k].items)} ítems · ${fN(a[k].u)} u · al ${fD(a.fecha)}</div><div class="n">${delta(a,b)}</div></div>`}).join('')}</div>`:`<div class="empty">Todavía no hay fotos de depósitos. Cargá el informe de stock para empezar el registro.</div>`}
   </section>
@@ -2224,13 +2238,19 @@ function bindDepChart(){
     return `<polyline fill="none" stroke="${col}" stroke-width="2" points="${pts.map(x=>X(x.fecha)+','+Y(x[k][met])).join(' ')}"/>`+pts.map(x=>`<circle cx="${X(x.fecha)}" cy="${Y(x[k][met])}" r="3.5" fill="${col}"><title>${esc(depName(c))} ${fD(x.fecha)}: ${DEP_MET[met][2](x[k][met])}</title></circle>`).join('')}).join('');
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución por depósito">${g}${lines}</svg>`;
 }
+/* planilla por depósito (DD_M_AA.xlsx): una solapa por depósito, mismas columnas y anchos que la planilla de Ruben */
+const DEPO_HDR=['CODIGO','ORIGEN','DESCRIPCION','UBICACIÓN','CANTIDAD','P VENTA','Columna1','TOTAL COSTO','COSTOS','T VENTA'];
+const DEPO_COLS=[18.8,9.8,42.8,16.8,10.8,12.8,10.8,13.8,12.8,12.8].map(w=>({wch:w}));
+const depoSheet=(codigo,nombre,rows)=>({name:depName(codigo,nombre),cols:DEPO_COLS,rows:[DEPO_HDR,...rows]});
+function depoFile(fecha){const d=new Date((fecha||stamp())+'T12:00:00');return `${d.getDate()}_${d.getMonth()+1}_${String(d.getFullYear()).slice(-2)}.xlsx`}
 async function depoXls(){
-  const {codes,fechas,at}=depoData();const sheets=[];let f0='';
-  for(const c of codes){const d=await readDataset('depoplan--'+c);if(!d)continue;f0=d.meta.fecha>f0?d.meta.fecha:f0;
-    sheets.push({name:depName(c,d.meta.nombre),rows:[['CODIGO','ORIGEN','DESCRIPCION','UBICACIÓN','CANTIDAD','P VENTA','Columna1','TOTAL COSTO','COSTOS','T VENTA'],...d.rows]})}
+  const {codes}=depoData();const sheets=[];let f0='';
+  for(const c of codes){const d=await readDataset('depoplan--'+c);if(!d)continue;f0=d.meta.fecha>f0?d.meta.fecha:f0;sheets.push(depoSheet(c,d.meta.nombre,d.rows))}
   if(!sheets.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return}
-  const d=new Date((f0||stamp())+'T12:00:00');exportXlsx(`${d.getDate()}_${d.getMonth()+1}_${String(d.getFullYear()).slice(-2)}.xlsx`,sheets);
+  exportXlsx(depoFile(f0),sheets);
 }
+/* al confirmar la carga se baja la planilla del informe recién cargado */
+function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const sh=a.depos.filter(d=>d.plan.length).sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(d=>depoSheet(d.codigo,d.nombre,d.plan));if(sh.length)exportXlsx(depoFile(a.fecha),sh)}
 function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Depósito','Sucursal','Ítems N','Unidades N','$ costo N','$ precio N','Ítems P','$ costo P','Ítems total','$ costo total','$ precio total']];
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
   exportXlsx(`Evolucion stock por deposito ${stamp()}.xlsx`,[{name:'Evolucion',rows}])}
@@ -2390,7 +2410,7 @@ const KINDS={
   ventas:{t:'Ventas de los últimos 6 meses',req:1,d:'Informe de Autologica <i>Ventas &gt; Por proveedor y rango de fechas</i> exportado a Excel. También acepta otros listados con código y cantidad.',
     f:[['code','Código de pieza',[/^co_?pieza$/,/^art[ií]culo$/,/c[oó]digo/,/popims/,/^pieza$/],1],['desc','Descripción',[/descrip/,/^pieza$/]],['qty','Cantidad',[/^cantidad$/,/^cant\.?$/,/cantidad/,/unid/],1],
        ['suc','Sucursal',[/boca/,/sucursal/],0,'last'],['mes','Mes',[/^mes$/,/per[ií]odo/]],['fecha','Fecha',[/^fecha$/,/fecha/]],['fam','Familia',[/familia/,/rubro/]]]},
-  stock:{t:'Stock actual',req:1,d:'Informe de Autologica <i>Stock &gt; Stock a costo &gt; Detallado</i> exportado a Excel. Toma stock, costo de reposición y actividad.',
+  stock:{t:'Stock actual',req:1,d:'Informe de Autologica <i>Stock &gt; Stock a costo &gt; Avanzado</i> (o <i>Detallado</i>) exportado a Excel. Toma stock y costo de reposición (el Detallado trae además la actividad).',
     f:[['code','Código',[/^art[ií]culo$/,/c[oó]digo/,/^co_?pieza$/,/pieza/],1],['desc','Descripción',[/descrip/]],['qty','Stock',[/^stock/,/existencia/,/^cantidad/,/stock/],1],['cost','Costo de reposición',[/cto\.?\s*rep/,/costo/,/reposic/,/precio/]]]},
   wings:{t:'Pedidos Wings',req:0,d:'Descarga de pedidos de Wings (HR_191…xlsx de Karam, HR_60580…xlsx de Quick Lane): BO físico (40), OD (50), en proceso (10, 20, 25, 42, 43, 44, 58) y cupo OD de los últimos 4 meses. Si no cargás uno nuevo, se usan los pedidos del Excel base.',
     f:[['fecha','Fecha',[/^fecha( pedido)?$/],1],['codPed','Pieza pedida',[/pieza pedida/],1],['qPed','# Pedida',[/#\s*pedida/,/cant.*pedida/],1],['codFac','Pieza facturada',[/pieza factur/]],['qFac','# Facturada',[/#\s*factur/,/cant.*factur/],1],['estado','Estado',[/estado/],1]]},
@@ -2576,12 +2596,12 @@ async function confirmAuto(p){
         const cur=(await loadSuc(to)).stock;if(cur&&cur.meta.fecha&&a.fecha&&a.fecha<cur.meta.fecha){old.push(`${to} (tiene stock al ${fD(cur.meta.fecha)})`);continue}
         await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:to,fuente:'Autologica',sucOrigen:d.suc,porOrigen:true},d.rows,to);
         S.finalsBy[to]={};logAct('Cargó stock',`${p.fileName} · ${d.rows.length} piezas al ${fD(a.fecha)}`,to);done.push(`${to} ${fN(d.rows.length)}`)}
-      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);
+      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);depoXlsFrom(a);
       toast((done.length?`Stock al ${fD(a.fecha)} guardado: ${done.join(' · ')} piezas.`:`Foto del ${fD(a.fecha)} guardada en Stock por depósito.`)+(old.length?` No se reemplazó el stock de ${old.join(', ')}: este informe es más viejo.`:''));
     }else if((()=>{const c=S.cache[suc]&&S.cache[suc].stock;return c&&c.meta.fecha&&a.fecha&&a.fecha<c.meta.fecha})()){
-      await saveDepos(a,p.fileName,suc);toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
+      await saveDepos(a,p.fileName,suc);depoXlsFrom(a);toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
     }else{
-      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);
+      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);depoXlsFrom(a);
       if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();logAct('Cargó stock',`${p.fileName} · ${a.rows.length} piezas al ${fD(a.fecha)}`,suc);toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
     }
     S.pending=null;
@@ -2660,7 +2680,7 @@ function vParams(){
 async function exportXlsx(filename,sheets){
   if(!dl){toast('La descarga no está disponible en esta vista.');return}
   const wb=XLSX.utils.book_new();
-  for(const s of sheets){const ws=XLSX.utils.aoa_to_sheet(s.rows);ws['!cols']=s.rows[0].map((h,i)=>({wch:Math.min(48,Math.max(8,...s.rows.slice(0,200).map(r=>String(r[i]==null?'':r[i]).length+1)))}));XLSX.utils.book_append_sheet(wb,ws,s.name.slice(0,31))}
+  for(const s of sheets){const ws=XLSX.utils.aoa_to_sheet(s.rows);ws['!cols']=s.cols||s.rows[0].map((h,i)=>({wch:Math.min(48,Math.max(8,...s.rows.slice(0,200).map(r=>String(r[i]==null?'':r[i]).length+1)))}));XLSX.utils.book_append_sheet(wb,ws,s.name.slice(0,31))}
   const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});
   try{await dl.save({filename,data:new Blob([buf])})}catch(e){if(e&&e.code!=='declined')toast('No se pudo descargar: '+(e.message||e.code))}
 }
