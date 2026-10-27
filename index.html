@@ -1375,15 +1375,25 @@ window.__LOCAL = true; // habilita Respaldo en Parámetros
     const { data: ses } = await sb.auth.getSession();
     const email = ses && ses.session && ses.session.user && ses.session.user.email;
     if (!email) { showLogin(); return; }
-    const { data: urows, error: ue } = await sb.from('usuarios').select('email,sucursal,admin').ilike('email', email);
+    const { data: urows, error: ue } = await sb.from('usuarios').select('*').ilike('email', email);
     if (ue) { showLogin('No se pudieron leer los permisos: ' + ue.message); return; }
     const u = urows && urows[0];
-    if (!u || (!u.admin && !u.sucursal)) { await sb.auth.signOut(); showLogin(`El usuario ${email} no tiene una sucursal asignada. Pedile al administrador que lo agregue en la tabla usuarios.`); return; }
-    window.__USER = { email: email.toLowerCase(), sucursal: u.sucursal, admin: !!u.admin };
+    const sucs = u ? (Array.isArray(u.sucursales) && u.sucursales.length ? u.sucursales : (u.sucursal ? [u.sucursal] : [])) : [];
+    if (!u) { await sb.auth.signOut(); showLogin(`El usuario ${email} no está habilitado. Pedile al administrador que lo agregue en Usuarios.`); return; }
+    if (u.activo === false) { await sb.auth.signOut(); showLogin(`El usuario ${email} está desactivado. Hablá con el administrador.`); return; }
+    if (!u.admin && !sucs.length) { await sb.auth.signOut(); showLogin(`El usuario ${email} no tiene una sucursal asignada. Pedile al administrador que se la asigne en Usuarios.`); return; }
+    window.__USER = { email: email.toLowerCase(), nombre: u.nombre || '', sucursal: sucs[0] || '', sucursales: sucs, permisos: Array.isArray(u.permisos) ? u.permisos : null, admin: !!u.admin };
     try { await loadAll(); } catch (e) { showLogin('No se pudieron leer los datos: ' + e.message); return; }
     const el = document.getElementById('login'); if (el) el.remove();
     resolveReady();
   }
+  /* Administración de usuarios: solo el administrador (lo controla también Supabase) */
+  const rpcErr = e => { const m = (e && e.message) || String(e); return new Error(/could not find the function|schema cache/i.test(m) ? 'Falta correr supabase/usuarios.sql en Supabase (SQL Editor).' : m); };
+  window.__adm = {
+    list: async () => { const { data, error } = await sb.from('usuarios').select('*').order('email'); if (error) throw rpcErr(error); return data || []; },
+    guardar: async o => { const { error } = await sb.rpc('admin_guardar_usuario', { p_email: o.email, p_nombre: o.nombre || null, p_sucursales: o.sucursales, p_permisos: o.permisos, p_activo: o.activo !== false, p_clave: o.clave || null }); if (error) throw rpcErr(error); },
+    borrar: async email => { const { error } = await sb.rpc('admin_borrar_usuario', { p_email: email }); if (error) throw rpcErr(error); }
+  };
   window.__logout = async () => { await sb.auth.signOut(); try { localStorage.removeItem('stdstock-suc'); } catch (e) {} location.reload(); };
   sb.auth.getSession().then(({ data }) => { if (data.session) start(); else showLogin(); });
   window.claude = { use: async n => { await ready; return n === 'db' ? { doc: docRef, collection: colRef } : n === 'downloads' ? downloads : null; } };
@@ -1776,6 +1786,11 @@ const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe'
 const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
+/* Permisos por sección: el admin ve todo; permisos vacío (null) = todas las secciones */
+const ADMIN_TABS=[['usuarios','Usuarios'],['actividad','Actividad']];
+const can=k=>{const u=ME();if(!u||u.admin)return true;if(ADMIN_TABS.some(x=>x[0]===k))return false;return !u.permisos||u.permisos.includes(k)};
+const mySucs=()=>{const u=ME();if(!u||u.admin)return S.sucs;return (u.sucursales||[]).length?u.sucursales:[S.P.sucursal]};
+const tabName=k=>(TABS0.concat(ADMIN_TABS).find(x=>x[0]===k)||[k,k])[1];
 function logAct(tipo,detalle,suc){if(!db||!ME())return;db.collection('actividad').add({fecha:new Date().toISOString(),usuario:ME().email,sucursal:suc||S.P.sucursal,tipo,detalle:detalle||''}).catch(()=>{})}
 const stdSet=()=>{const k=stdKey();if(!S.stdBy[k])S.stdBy[k]=[];return new Set(S.stdBy[k])};
 
@@ -1854,7 +1869,7 @@ async function boot(){
     if(d.exists){try{S.finalsBy=JSON.parse(d.data().bySuc||'{}')}catch(e){}}
     if(sc.exists){S.sucs=sc.data().list||S.sucs;S.sucMap=sc.data().map||{};if(sc.data().cfg)S.sucCfg=sc.data().cfg;
       if(!S.sucs.some(x=>/quick/i.test(x))&&(!ME()||ME().admin)){S.sucs.push('Quick Lane');S.sucMap['QUICK LANE LA RIOJA']=S.sucMap['QUICK LANE LA RIOJA']||'Quick Lane';S.sucMap['WINGS 60580']=S.sucMap['WINGS 60580']||'Quick Lane';S.sucCfg['Quick Lane']=Object.assign({transf:true},S.sucCfg['Quick Lane']);saveSucs()}}
-    if(ME()&&!ME().admin){S.P.sucursal=ME().sucursal;if(!S.sucs.includes(S.P.sucursal))S.sucs.push(S.P.sucursal)}
+    if(ME()&&!ME().admin){(ME().sucursales||[]).forEach(x=>{if(!S.sucs.includes(x))S.sucs.push(x)});const mine=mySucs();let ls=null;try{ls=localStorage.getItem('stdstock-suc')}catch(e){}S.P.sucursal=mine.includes(ls)?ls:mine[0]}
     else if(ME()){try{const ls=localStorage.getItem('stdstock-suc');if(ls&&S.sucs.includes(ls))S.P.sucursal=ls}catch(e){}}
     if(!S.sucs.includes(S.P.sucursal))S.P.sucursal=S.sucs[0];
     const [oq,ddp,base]=await Promise.all(['oq','ddp','wingsBase'].map(readDataset));
@@ -1879,7 +1894,8 @@ const finalOf=l=>S.finals[l.code]!=null?S.finals[l.code]:l.sug;
 
 /* ---------- Shell ---------- */
 function renderShell(){
-  const TABS=TABS0.concat(ME()&&ME().admin?[['actividad','Actividad']]:[]);
+  const TABS=TABS0.concat(ME()&&ME().admin?ADMIN_TABS:[]).filter(([k])=>can(k));
+  if(TABS.length&&!can(S.tab))S.tab=TABS[0][0];
   $('#tabs').innerHTML=TABS.map(([k,t])=>`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${t}</button>`).join('');
   renderChips();
 }
@@ -1895,20 +1911,22 @@ function renderChips(){
   if(S.noDb)ch.push(`<span class="chip"><i class="dot warn"></i>Sin guardado: los datos se pierden al cerrar</span>`);
   $('#chips').innerHTML=ch.join('');
   $('#origSel').value=S.P.origen||'';$('#origSel').style.cssText=S.P.origen==='N'?'':'border-color:#d97706;background:#fff7ed;color:#9a3412';$('#origSel').title=S.P.origen==='N'?'Por defecto solo piezas N (Original)':'Atención: incluye piezas que no son N. Al volver a abrir la app vuelve a N.';
-  const u=ME();$('#userBox').innerHTML=u?`<span class="chip" title="${u.admin?'Administrador: ve todas las sucursales':'Solo '+esc(u.sucursal)}"><b>${esc(u.email)}</b>${u.admin?' · admin':''}</span><button class="btn sm" data-act="logout">Salir</button>`:'';
-  $('#sucSel').disabled=!isAdmin();
-  $('#sucSel').innerHTML=(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+(isAdmin()?'<option value="__add">+ Agregar sucursal…</option>':'');
+  const u=ME();$('#userBox').innerHTML=u?`<span class="chip" title="${esc(u.email)} · ${u.admin?'Administrador: acceso total':'Sucursales: '+esc((u.sucursales||[]).join(', '))}"><b>${esc(u.nombre||u.email)}</b>${u.admin?' · admin':''}</span><button class="btn sm" data-act="logout">Salir</button>`:'';
+  $('#sucSel').disabled=mySucs().length<2&&!isAdmin();
+  $('#sucSel').innerHTML=mySucs().map(s=>`<option value="${esc(s)}"${s===S.P.sucursal?' selected':''}>${esc(s)}</option>`).join('')+(isAdmin()?'<option value="__add">+ Agregar sucursal…</option>':'');
 }
 function render(){
   renderShell();
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
-  const fn={sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
+  if(!can(S.tab)){m.innerHTML='<div class="empty">Tu usuario no tiene acceso a ninguna sección. Pedile acceso al administrador.</div>';return}
+  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
   if(S.tab==='ford')mountFord();
   if(S.tab==='fyb')loadFyb();
+  if(S.tab==='usuarios'&&!S.usrs&&!S.usrsLoading)loadUsers();
 }
 function needData(){
   const per=S.D.ventas&&S.D.ventas.meta.diasPer&&S.res&&S.res.dias<S.P.dias?`<div class="note warn"><b>Las ventas de ${esc(stdKey())} cubren solo ${fD(S.D.ventas.meta.desde)} a ${fD(S.D.ventas.meta.hasta)}</b> (${fN(S.res.dias,1)} días hábiles). El MAD se calcula con ese período; con menos de 6 meses la demanda es menos confiable. Cargá ventas de 6 meses en <button class="btn sm" data-tab="datos">Cargar datos</button>.</div>`:'';
@@ -2387,6 +2405,64 @@ function vAct2(){
   ${F.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Sucursal</th><th>Qué hizo</th><th>Detalle</th></tr></thead><tbody>${F.slice(0,500).map(x=>`<tr><td>${new Date(x.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</td><td>${esc(x.usuario)}</td><td>${esc(x.sucursal)}</td><td>${esc(x.tipo)}</td><td class="desc" title="${esc(x.detalle)}">${esc(x.detalle)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay actividad registrada.</div>'}</section>`;
 }
 
+/* ---------- Vista: Usuarios (solo administrador) ---------- */
+const uSucs=x=>Array.isArray(x.sucursales)&&x.sucursales.length?x.sucursales:(x.sucursal?[x.sucursal]:[]);
+const uPerm=x=>Array.isArray(x.permisos)?x.permisos:TABS0.map(t=>t[0]);
+async function loadUsers(){S.usrsLoading=true;S.usrsErr='';try{S.usrs=await window.__adm.list()}catch(e){S.usrsErr=e.message;S.usrs=[]}S.usrsLoading=false;if(S.tab==='usuarios')render()}
+function vUsers(){
+  if(!isAdmin())return '';
+  if(!window.__adm)return '<div class="empty">La administración de usuarios funciona en la página publicada, conectada a Supabase.</div>';
+  const L=S.usrs,u=S.ui;if(!L)return '<div class="empty">Cargando usuarios…</div>';
+  const me=ME()?ME().email:'',ed=u.usrEdit,cur=ed&&ed!=='__new'?L.find(x=>String(x.email).toLowerCase()===ed):null;
+  const allSucs=[...new Set([...S.sucs,...L.flatMap(uSucs)])];
+  let editor='';
+  if(ed){const nuevo=!cur,adm=cur&&cur.admin,self=cur&&String(cur.email).toLowerCase()===me,su=cur?uSucs(cur):[S.P.sucursal],pe=cur?uPerm(cur):TABS0.map(t=>t[0]);
+    editor=`<section class="panel" id="usrBox"><div class="panel-h"><div><h2>${nuevo?'Nuevo usuario':'Editar '+esc(cur.nombre||cur.email)}</h2><p class="sub">${nuevo?'El usuario entra en esta misma página con su email y la contraseña que le pongas acá.':'Los cambios se aplican la próxima vez que el usuario abra o recargue la página.'}</p></div></div>
+    <form id="usrForm" style="display:grid;gap:16px">
+      <div class="params">
+        <label>Nombre<input type="text" id="usrNombre" value="${esc(cur?cur.nombre||'':'')}" placeholder="Ej. Diego Montivero"><small>Se muestra arriba, al lado de Salir</small></label>
+        <label>Email<input type="text" id="usrEmail" value="${esc(cur?cur.email:'')}"${cur?' readonly':''} autocomplete="off" placeholder="usuario@karamsa.com"><small>${cur?'El email no se puede cambiar':'Con este email ingresa'}</small></label>
+        <label>${nuevo?'Contraseña':'Nueva contraseña'}<span class="toolbar" style="flex-wrap:nowrap"><input type="text" id="usrClave" autocomplete="new-password" placeholder="${nuevo?'Mínimo 6 caracteres':'Vacío = no se cambia'}" style="flex:1"><button class="btn sm" type="button" data-act="usrGen">Generar</button></span><small>${nuevo?'Pasásela al usuario':'Solo si se la olvidó o querés cambiarla'}</small></label>
+      </div>
+      ${adm?`<div class="note"><b>Administrador:</b> tiene acceso a todas las secciones y sucursales, y es el único que puede agregar usuarios y dar permisos.</div>`:`
+      <div><h3 style="margin:0 0 6px">Sucursales</h3><div class="checks">${allSucs.map(x=>`<label><input type="checkbox" data-usuc="${esc(x)}"${su.includes(x)?' checked':''}> ${esc(x)}</label>`).join('')}</div><small class="faint">Si marcás más de una, el usuario elige la sucursal arriba en la app.</small></div>
+      <div><div class="toolbar" style="margin-bottom:6px"><h3 style="margin:0;flex:1">Secciones a las que tiene acceso</h3><button class="btn sm" type="button" data-act="usrAll">Todas</button><button class="btn sm" type="button" data-act="usrNone">Ninguna</button></div>
+        <div class="checks">${TABS0.map(([k,t])=>`<label><input type="checkbox" data-uperm="${k}"${pe.includes(k)?' checked':''}> ${esc(t)}</label>`).join('')}</div>
+        <small class="faint">Parámetros se puede consultar pero solo el administrador lo cambia. Usuarios y Actividad son solo del administrador.</small></div>
+      ${self?'':`<label class="checks"><input type="checkbox" id="usrActivo"${!cur||cur.activo!==false?' checked':''}> Usuario activo (si lo desmarcás no puede ingresar, pero no se borra)</label>`}`}
+      <div class="toolbar"><button class="btn pri" type="submit">${nuevo?'Crear usuario':'Guardar cambios'}</button><button class="btn" type="button" data-act="usrCancel">Cancelar</button><span style="flex:1"></span>
+        ${cur&&!self&&!adm?(u.usrDel===cur.email?`<span class="toolbar">¿Eliminar a ${esc(cur.email)}? No va a poder ingresar más. <button class="btn danger sm" type="button" data-act="usrDelYes">Sí, eliminar</button><button class="btn sm" type="button" data-act="usrDelNo">No</button></span>`:`<button class="btn danger" type="button" data-act="usrDel">Eliminar usuario</button>`):''}</div>
+    </form></section>`}
+  const rows=L.slice().sort((a,b)=>(b.admin?1:0)-(a.admin?1:0)||String(a.nombre||a.email).localeCompare(String(b.nombre||b.email))).map(x=>{const pe=uPerm(x),off=x.activo===false;
+    return `<tr${off?' style="opacity:.55"':''}><td><b>${esc(x.nombre||'')}</b>${x.nombre?'<br>':''}<span class="faint">${esc(x.email)}</span></td><td>${x.admin?'Todas':esc(uSucs(x).join(', ')||'–')}</td>
+      ${x.admin?`<td colspan="${TABS0.length}" style="text-align:center"><b>Administrador · acceso total</b></td>`:TABS0.map(([k,t])=>`<td style="text-align:center" title="${esc(t)}">${pe.includes(k)?'<span style="color:var(--ok,#15803d);font-weight:700">✓</span>':'<span class="faint">·</span>'}</td>`).join('')}
+      <td>${off?'Desactivado':'Activo'}</td><td><button class="btn sm" data-act="usrEdit" data-email="${esc(String(x.email).toLowerCase())}">Editar</button></td></tr>`}).join('');
+  return `${editor}<section class="panel"><div class="panel-h"><div><h2>Usuarios y permisos</h2><p class="sub">Quién entra a la app, a qué sucursales y a qué secciones. Solo vos, como administrador, ves esta pantalla.</p></div>
+    <div class="toolbar"><button class="btn" data-act="usrReload">Actualizar</button><button class="btn pri" data-act="usrNew">+ Agregar usuario</button></div></div>
+    ${S.usrsErr?`<div class="note warn"><b>No se pudieron leer los usuarios:</b> ${esc(S.usrsErr)}</div>`:''}
+    ${L.length?`<div class="tw"><table><thead><tr><th>Usuario</th><th>Sucursales</th>${TABS0.map(([k,t])=>`<th style="text-align:center;font-size:11px;white-space:normal;min-width:62px">${esc(t)}</th>`).join('')}<th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:(S.usrsErr?'':'<div class="empty">No hay usuarios cargados.</div>')}</section>`;
+}
+async function usrSave(f){
+  const u=S.ui,L=S.usrs||[],ed=u.usrEdit,cur=ed&&ed!=='__new'?L.find(x=>String(x.email).toLowerCase()===ed):null;
+  const email=String((cur?cur.email:$('#usrEmail').value)||'').trim().toLowerCase(),clave=$('#usrClave').value.trim(),nombre=$('#usrNombre').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('Revisá el email.');return}
+  if(!cur&&L.some(x=>String(x.email).toLowerCase()===email)){toast('Ese usuario ya existe: buscalo en la lista y tocá Editar.');return}
+  if(!cur&&!clave){toast('Poné una contraseña para el usuario nuevo (o tocá Generar).');return}
+  if(clave&&clave.length<6){toast('La contraseña tiene que tener al menos 6 caracteres.');return}
+  let sucursales,permisos,activo=true;
+  if(cur&&cur.admin){sucursales=uSucs(cur);permisos=Array.isArray(cur.permisos)?cur.permisos:null}
+  else{sucursales=[...f.querySelectorAll('[data-usuc]:checked')].map(x=>x.dataset.usuc);permisos=[...f.querySelectorAll('[data-uperm]:checked')].map(x=>x.dataset.uperm);
+    if(!sucursales.length){toast('Marcá al menos una sucursal.');return}
+    const a=$('#usrActivo');if(a)activo=a.checked}
+  const btn=f.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Guardando…';
+  try{await window.__adm.guardar({email,nombre,sucursales,permisos,activo,clave});
+    const det=cur&&cur.admin?(clave?'cambió contraseña':''):`${sucursales.join(', ')} · ${permisos.length===TABS0.length?'todas las secciones':permisos.map(tabName).join(', ')||'sin secciones'}${activo?'':' · desactivado'}${clave&&cur?' · nueva contraseña':''}`;
+    logAct(cur?'Modificó usuario':'Creó usuario',`${email}${det?': '+det:''}`,'Todas');
+    u.usrEdit=null;u.usrDel=null;await loadUsers();toast(cur?'Cambios guardados.':`Usuario ${email} creado.${clave?' Pasale la contraseña.':''}`)}
+  catch(e){btn.disabled=false;btn.textContent=cur?'Guardar cambios':'Crear usuario';toast('No se pudo guardar: '+e.message)}
+}
+const genPass=()=>{const c='abcdefghjkmnpqrstuvwxyz23456789';let r='';const a=new Uint32Array(8);crypto.getRandomValues(a);a.forEach(n=>r+=c[n%c.length]);return r};
+
 /* ---------- Vista: Historial ---------- */
 function vHist(){
   const u=S.ui;const L=S.saved;
@@ -2455,7 +2531,7 @@ function vAutoWings(p){
       <div class="tile"><div class="l">En proceso</div><div class="v">${fN(cnt(3))}</div><div class="n">${fN(sum(3))} u</div></div>
       <div class="tile"><div class="l">Cupo OD</div><div class="v" style="font-size:18px">${g.meta.cupoMeses.length?fMes(g.meta.cupoMeses[0])+' – '+fMes(g.meta.cupoMeses[g.meta.cupoMeses.length-1]):'–'}</div><div class="n">promedio pedido de esos 4 meses</div></div>
     </div>
-    <div class="map"><label>Guardar en<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}${isAdmin()?`<option value="__all"${p.sucApp==='__all'?' selected':''}>Todas las sucursales</option>`:''}</select><small class="faint">Wings trae el código de empresa ${esc(a.empresa)} (191 Karam, 60580 Quick Lane). Se recuerda la elección para la próxima carga.</small></label></div>
+    <div class="map"><label>Guardar en<select id="autoSuc">${mySucs().map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}${isAdmin()?`<option value="__all"${p.sucApp==='__all'?' selected':''}>Todas las sucursales</option>`:''}</select><small class="faint">Wings trae el código de empresa ${esc(a.empresa)} (191 Karam, 60580 Quick Lane). Se recuerda la elección para la próxima carga.</small></label></div>
     <p class="faint" style="margin:10px 0 0">Estados: ${est.map(([k,v])=>`${esc(k)} (${fN(v)})`).join(' · ')}</p>
   </section>`;
 }
@@ -2478,9 +2554,9 @@ function vAuto(p){
       <div class="tile"><div class="l">Unidades</div><div class="v">${fN(units,1)}</div><div class="n">N original ${fN(oc.N||0)} · P nacional ${fN(oc.P||0)}</div></div>
       ${isV?'':`<div class="tile"><div class="l">Valorizado a costo</div><div class="v">${fM(val)}</div></div>`}
     </div>
-    ${!isV&&a.multi?`<h3 style="margin:4px 0 8px">El informe trae ${a.multi.length} sucursales</h3><div class="tw" style="max-height:none;margin-bottom:12px"><table><thead><tr><th>Autologica</th><th class="n">Piezas</th><th>Guardar en</th></tr></thead><tbody>${a.multi.map((d,i)=>`<tr><td>${esc(d.suc)}</td><td class="n">${fN(d.rows.length)}</td><td><select data-msuc="${i}">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===d.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value=""${d.sucApp===''?' selected':''}>No guardar</option></select></td></tr>`).join('')}</tbody></table></div>`:''}
+    ${!isV&&a.multi?`<h3 style="margin:4px 0 8px">El informe trae ${a.multi.length} sucursales</h3><div class="tw" style="max-height:none;margin-bottom:12px"><table><thead><tr><th>Autologica</th><th class="n">Piezas</th><th>Guardar en</th></tr></thead><tbody>${a.multi.map((d,i)=>`<tr><td>${esc(d.suc)}</td><td class="n">${fN(d.rows.length)}</td><td><select data-msuc="${i}">${mySucs().map(s=>`<option${s===d.sucApp?' selected':''}>${esc(s)}</option>`).join('')}<option value=""${d.sucApp===''?' selected':''}>No guardar</option></select></td></tr>`).join('')}</tbody></table></div>`:''}
     ${!isV&&a.depos&&a.depos.length?`<p class="faint" style="margin:0 0 10px">Además se guarda la foto del día de ${a.depos.map(d=>esc(depName(d.codigo,d.nombre))).join(', ')} para <b>Stock por depósito</b>.</p>`:''}
-    <div class="map"${!isV&&a.multi?' hidden':''}><label>Guardar en la sucursal<select id="autoSuc">${(isAdmin()?S.sucs:[S.P.sucursal]).map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select>${!isAdmin()&&a.suc&&S.sucMap[a.suc]&&S.sucMap[a.suc]!==S.P.sucursal?`<div class="note warn">Este informe es de <b>${esc(S.sucMap[a.suc])}</b> (Autologica: ${esc(a.suc)}), pero tu usuario carga ${esc(S.P.sucursal)}. Revisá que bajaste el archivo de tu sucursal.</div>`:''}<small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
+    <div class="map"${!isV&&a.multi?' hidden':''}><label>Guardar en la sucursal<select id="autoSuc">${mySucs().map(s=>`<option${s===p.sucApp?' selected':''}>${esc(s)}</option>`).join('')}</select>${!isAdmin()&&a.suc&&S.sucMap[a.suc]&&!mySucs().includes(S.sucMap[a.suc])?`<div class="note warn">Este informe es de <b>${esc(S.sucMap[a.suc])}</b> (Autologica: ${esc(a.suc)}), pero tu usuario carga ${esc(S.P.sucursal)}. Revisá que bajaste el archivo de tu sucursal.</div>`:''}<small class="faint">${a.suc&&S.sucMap[a.suc]?`"${esc(a.suc)}" se asoció antes con ${esc(S.sucMap[a.suc])}.`:`Autologica la llama "${esc(a.suc||'?')}". Se recuerda la elección para la próxima carga.`}</small></label></div>
     ${isV?`<h3 style="margin:14px 0 8px">Primeras filas</h3>
     <div class="tw" style="max-height:none"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${prev.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="code"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:stPrev(p)}
   </section>`;
@@ -2559,11 +2635,11 @@ function setSheet(name){
   p.aoa=XLSX.utils.sheet_to_json(p.wb.Sheets[name],{header:1,raw:true,defval:null,blankrows:false});
   p.auto=null;const wh=detectWings(p.aoa);
   if(wh>=0){p.kind='wings';const pw=parseWings(p.aoa,wh);const emp=Object.keys(pw.emp).sort((a,b)=>pw.emp[b]-pw.emp[a])[0]||'';
-    p.auto=Object.assign({wings:true,empresa:emp,agg:aggWings(pw.raw),full:compactWings(p.aoa,wh)},pw);p.sucApp=isAdmin()?(S.sucMap['WINGS '+emp]||S.P.sucursal):S.P.sucursal;
+    p.auto=Object.assign({wings:true,empresa:emp,agg:aggWings(pw.raw),full:compactWings(p.aoa,wh)},pw);{const g=S.sucMap['WINGS '+emp];p.sucApp=g&&mySucs().includes(g)?g:S.P.sucursal}
     render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
   let ak=detectAutologica(p.aoa);const tall=ak==='ventasTaller';if(tall)ak='ventas';
   if(ak){if(ak!==p.kind){toast(`Este archivo es el informe de ${ak==='ventas'?'ventas':'stock'} de Autologica: se carga como ${ak==='ventas'?'ventas':'stock'}.`);p.kind=ak}
-    p.auto=ak==='ventas'?(tall?parseAutologicaVentasTaller(p.aoa):parseAutologicaVentas(p.aoa)):parseAutologicaStock(p.aoa);if(p.auto.multi){p.auto.multi.forEach(d=>{const g=S.sucMap[d.suc]||guessSuc(d);d.sucApp=isAdmin()?g:(g===S.P.sucursal?g:'')})}p.sucApp=isAdmin()?((p.auto.suc&&S.sucMap[p.auto.suc])||S.P.sucursal):S.P.sucursal;
+    p.auto=ak==='ventas'?(tall?parseAutologicaVentasTaller(p.aoa):parseAutologicaVentas(p.aoa)):parseAutologicaStock(p.aoa);if(p.auto.multi){p.auto.multi.forEach(d=>{const g=S.sucMap[d.suc]||guessSuc(d);d.sucApp=mySucs().includes(g)?g:''})}{const g=p.auto.suc&&S.sucMap[p.auto.suc];p.sucApp=g&&mySucs().includes(g)?g:S.P.sucursal}
     render();setTimeout(()=>{const e=$('#mapPanel');e&&e.scrollIntoView({behavior:'smooth',block:'start'})},50);return}
   p.h=detectHeader(p.kind,p.aoa);autoMap();
   if(p.kind==='stock'){const hdr=(p.aoa[p.h]||[]).join(' ');const m=hdr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);p.fecha=m?`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:new Date().toISOString().slice(0,10)}
@@ -2630,7 +2706,7 @@ async function confirmAuto(p){
       const dp=diasPeriodo(a.desde,a.hasta);toast(dp&&dp<S.P.dias*0.8?`Ventas guardadas: ${fN(g.rows.length)} códigos. El informe cubre ${fD(a.desde)} a ${fD(a.hasta)}: se dividen por ${fN(dp,1)} días hábiles.`:`Ventas guardadas: ${fN(g.rows.length)} códigos. Se dividen por ${S.P.dias} días hábiles.`);
     }else if(a.multi){
       const done=[],old=[];
-      for(const d of a.multi){const to=d.sucApp;if(!to||(!isAdmin()&&to!==S.P.sucursal))continue;
+      for(const d of a.multi){const to=d.sucApp;if(!to||!mySucs().includes(to))continue;
         if(isAdmin()&&S.sucMap[d.suc]!==to){S.sucMap[d.suc]=to;saveSucs()}
         const cur=(await loadSuc(to)).stock;if(cur&&cur.meta.fecha&&a.fecha&&a.fecha<cur.meta.fecha){old.push(`${to} (tiene stock al ${fD(cur.meta.fecha)})`);continue}
         await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:to,fuente:'Autologica',sucOrigen:d.suc,porOrigen:true},d.rows,to);
@@ -2689,7 +2765,7 @@ function vParams(){
   const P=S.P;const fams=[...new Set([...(S.res.fams||[]),...(P.exclFam||[])])].sort();
   const adm=isAdmin();
   const n=(id,l,h,step=1)=>`<label for="p_${id}">${l}<input type="number" id="p_${id}" data-p="${id}" step="${step}" min="0" value="${P[id]}"><small>${h}</small></label>`;
-  return `${adm?'':'<div class="note">Solo el administrador (repuestos@) puede cambiar los parámetros. Acá los podés consultar.</div>'}<fieldset ${adm?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px"><section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
+  return `${adm?'':'<div class="note">Solo el administrador puede cambiar los parámetros. Acá los podés consultar.</div>'}<fieldset ${adm?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px"><section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
     <button class="btn" data-act="resetParams">Volver a los valores del Excel</button></div>
     <div class="formula">MAD = venta del período ÷ días hábiles × 20<br>Std stock = ⌈ MAD × (ciclo + lead time + SS) ÷ 20 ⌉<br>Sugerido = ⌈ (Std stock − stock − pendientes) ÷ order unit ⌉ × order unit</div>
     <div class="params" style="margin-top:14px">
@@ -2763,7 +2839,7 @@ async function saveSug(name){
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-tab],[data-act],[data-view],[data-sort],[data-open],[data-addstd],[data-rmstd],[data-fybmode],[data-fybrm],[data-ctrl]');if(!t)return;
   const u=S.ui;
-  if(t.dataset.tab){S.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
+  if(t.dataset.tab){if(!can(t.dataset.tab)){toast(`Tu usuario no tiene acceso a ${tabName(t.dataset.tab)}.`);return}S.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
   if(t.dataset.view){u.view=t.dataset.view;u.sort=u.view==='pedir'?'$':'code';u.dir=u.view==='pedir'?-1:1;render();return}
   if(t.dataset.sort){const k=t.dataset.sort;if(u.sort===k)u.dir*=-1;else{u.sort=k;u.dir=['code','desc'].includes(k)?1:-1}render();return}
   if(t.dataset.open){u.openSaved=u.openSaved===t.dataset.open?null:t.dataset.open;u.confirmDel=null;render();return}
@@ -2812,6 +2888,15 @@ document.addEventListener('click',e=>{
   else if(a==='copyStd'){const from=t.dataset.from;logAct('Copió estándar',`desde ${from}`);S.stdBy[stdKey()]=[...(S.stdBy[from]||[])];saveStd();recompute();render();toast(`Se copiaron ${S.stdBy[stdKey()].length} piezas del estándar de ${from}.`)}
   else if(a==='rmSuc'){const s=t.dataset.suc;if(S.sucs.length<2)return;S.sucs=S.sucs.filter(x=>x!==s);saveSucs();if(S.P.sucursal===s)switchSuc(S.sucs[0]);else render()}
   else if(a==='confirmMap')confirmMap();
+  else if(a==='usrNew'){u.usrEdit='__new';u.usrDel=null;render();const i=$('#usrNombre');i&&(i.scrollIntoView({block:'center'}),i.focus())}
+  else if(a==='usrEdit'){u.usrEdit=t.dataset.email;u.usrDel=null;render();const b=$('#usrBox');b&&b.scrollIntoView({block:'start',behavior:'smooth'})}
+  else if(a==='usrCancel'){u.usrEdit=null;u.usrDel=null;render()}
+  else if(a==='usrReload'){S.usrs=null;loadUsers();render()}
+  else if(a==='usrGen'){const i=$('#usrClave');if(i){i.value=genPass();i.select()}}
+  else if(a==='usrAll'||a==='usrNone'){document.querySelectorAll('[data-uperm]').forEach(x=>x.checked=a==='usrAll')}
+  else if(a==='usrDel'){const c=(S.usrs||[]).find(x=>String(x.email).toLowerCase()===u.usrEdit);if(c){u.usrDel=c.email;render()}}
+  else if(a==='usrDelNo'){u.usrDel=null;render()}
+  else if(a==='usrDelYes'){const em=u.usrDel;t.disabled=true;window.__adm.borrar(em).then(async()=>{logAct('Eliminó usuario',em,'Todas');u.usrDel=null;u.usrEdit=null;await loadUsers();toast(em+' eliminado.')}).catch(e=>{t.disabled=false;toast('No se pudo eliminar: '+e.message)})}
   else if(a==='resetParams'){S.P=Object.assign({},DEFAULT_PARAMS,{sucursal:S.P.sucursal});saveParams();recompute();render()}
 });
 let qT;
@@ -2863,6 +2948,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();
   if(e.target.id==='saveForm'){saveSug($('#saveName').value.trim())}
+  if(e.target.id==='usrForm'){usrSave(e.target);return}
   if(e.target.dataset&&e.target.dataset.man){saveManual(e.target.dataset.man,e.target);return}
   if(e.target.id==='addSuc'){const n=$('#newSuc').value.trim();if(!n)return;if(S.sucs.some(s=>slug(s)===slug(n))){toast('Esa sucursal ya existe.');return}S.sucs.push(n);saveSucs();switchSuc(n);toast(n+' agregada. Cargá sus ventas y stock en Cargar datos.')}
   if(e.target.id==='fybAdd'){const c=norm($('#fybCode').value);if(!c||!S.fyb)return;if(S.fyb.items.some(x=>fkey(x[1])===fkey(c))){toast('Esa pieza ya está en la lista.');return}const l=S.byCode&&S.byCode.get(c);
