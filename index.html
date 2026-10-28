@@ -1782,7 +1782,7 @@ let db=null,dl=null;
 const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca','Quick Lane'],sucMap:{'CASA CENTRAL':'La Rioja','QUICK LANE LA RIOJA':'Quick Lane','WINGS 60580':'Quick Lane'},sucCfg:{'Quick Lane':{transf:true}},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
   tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
   ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
-const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['vendidos','Más vendidos'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
 const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
@@ -1920,7 +1920,7 @@ function render(){
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
   if(!can(S.tab)){m.innerHTML='<div class="empty">Tu usuario no tiene acceso a ninguna sección. Pedile acceso al administrador.</div>';return}
-  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
+  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
@@ -2118,6 +2118,93 @@ function bindChart(){
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Unidades vendidas por mes">${g}${bars}</svg><div class="tip" hidden></div>`;
   const tip=el.querySelector('.tip');
   el.querySelectorAll('rect[data-i]').forEach(r=>{r.addEventListener('mouseenter',()=>{const i=+r.dataset.i;const b=r.getBoundingClientRect(),e=el.getBoundingClientRect();tip.textContent=`${fMes(ms[i])}: ${fN(vals[i])} u`;tip.style.left=(b.left-e.left+b.width/2)+'px';tip.style.top=(e.height*(y(vals[i])/H))+'px';tip.hidden=false});r.addEventListener('mouseleave',()=>tip.hidden=true)});
+}
+
+/* ---------- Vista: Más vendidos (una o varias sucursales) ---------- */
+const sucAb=s=>{const w=String(s).split(/\s+/).filter(Boolean);return w.length>1?w.map(x=>x[0]).join('').toUpperCase():String(s).slice(0,2).toUpperCase()};
+function mvUi(){const u=S.ui;if(!u.mv)u.mv={sucs:[S.P.sucursal],fams:[],top:100,sort:'u'};const m=u.mv,mine=mySucs();m.sucs=m.sucs.filter(s=>mine.includes(s));if(!m.sucs.length)m.sucs=[mine.includes(S.P.sucursal)?S.P.sucursal:mine[0]];return m}
+function mvRes(s){
+  const o=S.cache[s];if(!o)return null;S.mvCache=S.mvCache||{};
+  const P=Object.assign({},S.P,{sucursal:s}),key=[s,P.origen,o.ventas&&o.ventas.meta.loadedAt,o.stock&&o.stock.meta.loadedAt,(S.stdBy[s]||[]).length,P.dias].join('|');
+  const c=S.mvCache[s];if(c&&c.key===key)return c.res;
+  const res=compute({oq:S.D.oq,ddp:S.D.ddp,ventas:o.ventas,stock:o.stock,wings:null,transf:false},new Set(S.stdBy[s]||[]),P);
+  S.mvCache[s]={key,res};return res;
+}
+function mvData(){
+  const m=mvUi(),by=new Map(),info=[];
+  for(const s of m.sucs){const o=S.cache[s];const r=o&&o.ventas?mvRes(s):null;info.push({s,o,r});if(!r)continue;
+    for(const l of r.lines){
+      let x=by.get(l.code);
+      if(!l.q6&&!(l.st>0)&&!x)continue;
+      if(!x){x={code:l.code,desc:l.desc,fam:l.fam,orig:l.orig,by:{},q:0,mad:0,st:0,$:0,cost:null};by.set(l.code,x)}
+      if(!x.desc&&l.desc)x.desc=l.desc;if(l.orig&&x.orig.indexOf(l.orig)<0)x.orig=x.orig?x.orig+'+'+l.orig:l.orig;
+      x.by[s]={q:l.q6,mad:l.mad,st:l.st,inStd:l.inStd,cost:l.cost};
+      x.q+=l.q6;x.mad+=l.mad;x.st+=Math.max(0,l.st);if(l.cost!=null&&x.cost==null)x.cost=l.cost;
+    }}
+  const L=[];for(const x of by.values()){if(!(x.q>0))continue;x.$=Object.values(x.by).reduce((a,b)=>a+b.q*(b.cost!=null?b.cost:(x.cost||0)),0);L.push(x)}
+  return {L,info};
+}
+let mvLoading=false;
+function mvEnsure(){
+  const m=mvUi(),miss=m.sucs.filter(s=>!S.cache[s]);if(!miss.length||mvLoading)return miss.length>0;
+  mvLoading=true;Promise.all(miss.map(s=>loadSuc(s).catch(()=>{S.cache[s]={}}))).finally(()=>{mvLoading=false;if(S.tab==='vendidos')render()});
+  return true;
+}
+const MVSORT={u:['Unidades',x=>x.q],mes:['Venta mensual',x=>x.mad],'$':['$ a costo',x=>x.$]};
+function mvRows(D){
+  const m=mvUi(),q=(S.ui.mvQ||'').trim().toUpperCase(),fs=new Set(m.fams),k=(MVSORT[m.sort]||MVSORT.u)[1];
+  const L=D.L.filter(x=>(!fs.size||fs.has(x.fam))&&(!q||x.code.includes(q)||String(x.desc).toUpperCase().includes(q)));
+  L.sort((a,b)=>k(b)-k(a)||b.q-a.q);
+  const tot=L.reduce((a,x)=>a+k(x),0)||1;let acc=0;
+  for(const x of L){acc+=k(x);x.acc=acc/tot*100;x.abc=x.acc-k(x)/tot*100<80?'A':x.acc-k(x)/tot*100<95?'B':'C'}
+  return L;
+}
+function vMv(){
+  const m=mvUi(),mine=mySucs();
+  if(mvEnsure())return `<div class="empty">Leyendo las ventas de ${esc(m.sucs.join(', '))}…</div>`;
+  const D=mvData(),L=mvRows(D),multi=m.sucs.length>1,sk=(MVSORT[m.sort]||MVSORT.u)[1];
+  const top=m.top>0?L.slice(0,m.top):L,shown=top.slice(0,1000);
+  const famAll={};for(const x of D.L){const f=famAll[x.fam]||(famAll[x.fam]={p:0,u:0,$:0});f.p++;f.u+=x.q;f.$+=x.$}
+  const famE=Object.entries(famAll).sort((a,b)=>b[1].u-a[1].u),famU=famE.reduce((a,e)=>a+e[1].u,0)||1;
+  const sinV=D.info.filter(i=>!i.r).map(i=>i.s);
+  const per=D.info.filter(i=>i.r).map(i=>{const v=i.o.ventas.meta;return {s:i.s,txt:(v.desde&&v.hasta?`${fD(v.desde)} al ${fD(v.hasta)}`:'período cargado')+` · ${fN(i.r.dias,0)} días hábiles`,dias:i.r.dias}});
+  const difPer=per.length>1&&Math.max(...per.map(p=>p.dias))-Math.min(...per.map(p=>p.dias))>5;
+  const sumU=L.reduce((a,x)=>a+x.q,0),sum$=L.reduce((a,x)=>a+x.$,0),topU=top.reduce((a,x)=>a+x.q,0),topV=top.reduce((a,x)=>a+sk(x),0),allV=L.reduce((a,x)=>a+sk(x),0);
+  const stdTag=x=>m.sucs.filter(s=>x.by[s]&&x.by[s].inStd).map(s=>`<span class="tag" title="En el estándar de ${esc(s)}">${esc(sucAb(s))}</span>`).join('');
+  const stTip=x=>m.sucs.map(s=>`${s}: ${fN(x.by[s]?Math.max(0,x.by[s].st):0)}`).join(' · ');
+  const rows=shown.map((x,i)=>`<tr><td class="n faint">${i+1}</td><td class="code">${esc(x.code)}</td><td>${esc(x.orig)}</td><td class="desc" title="${esc(x.desc)}">${esc(x.desc)}</td><td class="faint">${esc(x.fam)}</td>
+    ${multi?m.sucs.map(s=>`<td class="n">${x.by[s]&&x.by[s].q?fN(x.by[s].q,1):'<span class="faint">–</span>'}</td>`).join(''):''}
+    <td class="n"><b>${fN(x.q,1)}</b></td><td class="n">${fN(x.mad,1)}</td><td class="n" title="${esc(stTip(x))}">${fN(x.st)}</td><td class="n">${x.mad?fN(x.st/x.mad,1):'–'}</td><td class="n">${f$(x.$)}</td><td class="n faint">${fN(x.acc,1)} %</td><td><span class="tag"${x.abc==='A'?' style="font-weight:700;color:var(--ink,inherit)"':''}>${x.abc}</span></td><td>${stdTag(x)}</td></tr>`).join('');
+  return `<section class="panel">
+    <div class="panel-h"><div><h2>Piezas más vendidas</h2><p class="sub">Ranking por ${esc((MVSORT[m.sort]||MVSORT.u)[0].toLowerCase())} de ${multi?'las sucursales elegidas, sumadas':esc(m.sucs[0])}. Origen: ${S.P.origen?S.P.origen==='N'?'N original':'P nacional':'todos'} (selector de arriba). Venta mensual = MAD; cobertura = stock ÷ venta mensual.</p></div>
+      <div class="toolbar"><button class="btn" data-act="mvXls">Exportar Excel</button></div></div>
+    <div class="toolbar" style="margin-bottom:10px;gap:14px">
+      <div class="checks"><b style="margin-right:2px">Sucursales</b>${mine.map(s=>`<label><input type="checkbox" data-mvsuc="${esc(s)}"${m.sucs.includes(s)?' checked':''}> ${esc(s)}</label>`).join('')}</div>
+      <div class="seg" role="group" aria-label="Ordenar por">${Object.entries(MVSORT).map(([k,[t]])=>`<button data-act="mvSort" data-k="${k}" aria-pressed="${m.sort===k}">${t}</button>`).join('')}</div>
+      <select id="mvTop" aria-label="Cantidad">${[[20,'Top 20'],[50,'Top 50'],[100,'Top 100'],[200,'Top 200'],[500,'Top 500'],[0,'Todas']].map(([v,t])=>`<option value="${v}"${+m.top===v?' selected':''}>${t}</option>`).join('')}</select>
+      <input type="search" id="mvQ" placeholder="Buscar código o descripción" value="${esc(S.ui.mvQ||'')}" style="flex:1;min-width:180px">
+    </div>
+    ${sinV.length?`<div class="note warn" style="margin-bottom:10px">Sin ventas cargadas en <b>${esc(sinV.join(', '))}</b>; no suman al ranking.</div>`:''}
+    ${difPer?`<div class="note warn" style="margin-bottom:10px"><b>Los períodos de venta no son iguales:</b> ${per.map(p=>`${esc(p.s)} ${p.txt}`).join('; ')}. Para comparar parejo ordená por <b>Venta mensual</b>.</div>`:per.length?`<p class="faint" style="margin:0 0 10px">${per.map(p=>`${esc(p.s)}: ${p.txt}`).join(' · ')}</p>`:''}
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile"><div class="l">Piezas con venta</div><div class="v">${fN(L.length)}</div><div class="n">${m.fams.length?'en los rubros elegidos':'todos los rubros'}</div></div>
+      <div class="tile"><div class="l">Unidades vendidas</div><div class="v">${fN(sumU)}</div></div>
+      <div class="tile"><div class="l">Venta a costo rep.</div><div class="v">${fM(sum$)}</div></div>
+      <div class="tile"><div class="l">${m.top>0&&L.length>m.top?'Peso del top '+m.top:'Peso del listado'}</div><div class="v">${fN(allV?topV/allV*100:0,1)} %</div><div class="n">${fN(topU)} u · de ${esc((MVSORT[m.sort]||MVSORT.u)[0].toLowerCase())}</div></div>
+    </div>
+    <details open style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:600;margin-bottom:8px">Rubros ${m.fams.length?`· ${m.fams.length} elegidos <button class="btn sm" data-act="mvFamAll">Ver todos</button>`:'· marcá uno o varios para filtrar'}</summary>
+      <div class="tw" style="max-height:none"><table><thead><tr><th style="width:28px"></th><th>Rubro</th><th class="n">Piezas</th><th class="n">Unidades</th><th class="n">% u</th><th class="n">$ a costo</th></tr></thead><tbody>
+      ${famE.map(([f,o])=>`<tr><td><input type="checkbox" data-mvfam="${esc(f)}"${m.fams.includes(f)?' checked':''} aria-label="Filtrar ${esc(f)}"></td><td>${esc(f)}</td><td class="n">${fN(o.p)}</td><td class="n">${fN(o.u)}</td><td class="n">${fN(o.u/famU*100,1)} %</td><td class="n">${f$(o.$)}</td></tr>`).join('')}</tbody></table></div></details>
+    ${shown.length?`<div class="tw"><table><thead><tr><th class="n">#</th><th>Código</th><th>Orig.</th><th>Descripción</th><th>Rubro</th>${multi?m.sucs.map(s=>`<th class="n" title="Unidades vendidas en ${esc(s)}">${esc(sucAb(s))}</th>`).join(''):''}<th class="n">${multi?'Total u':'Unidades'}</th><th class="n" title="Promedio mensual (MAD)">Venta mes</th><th class="n">Stock</th><th class="n" title="Meses de stock = stock ÷ venta mensual">Cobert.</th><th class="n">$ a costo</th><th class="n" title="% acumulado del criterio de orden">% acum.</th><th title="A: hasta 80 % acumulado, B: hasta 95 %, C: resto">ABC</th><th>Std</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${top.length>shown.length?`<p class="faint">Mostrando 1.000 de ${fN(top.length)}. El Excel trae todas.</p>`:''}`
+    :`<div class="empty">${D.L.length?'No hay piezas con este filtro.':'No hay ventas cargadas para las sucursales elegidas.'}</div>`}
+  </section>`;
+}
+function mvXls(){
+  const m=mvUi(),D=mvData(),L=mvRows(D),top=m.top>0?L.slice(0,m.top):L,multi=m.sucs.length>1;
+  const rows=[['#','Código','Origen','Descripción','Rubro',...(multi?m.sucs.map(s=>'Vendido '+s):[]),'Unidades vendidas','Venta mensual (MAD)',...(multi?m.sucs.map(s=>'Stock '+s):[]),'Stock','Cobertura (meses)','$ a costo rep.','% acumulado','ABC','En estándar de'],
+    ...top.map((x,i)=>[i+1,x.code,x.orig,x.desc,x.fam,...(multi?m.sucs.map(s=>x.by[s]?x.by[s].q:0):[]),x.q,r2(x.mad),...(multi?m.sucs.map(s=>x.by[s]?Math.max(0,x.by[s].st):0):[]),x.st,x.mad?r2(x.st/x.mad):'',r2(x.$),r2(x.acc),x.abc,m.sucs.filter(s=>x.by[s]&&x.by[s].inStd).join(', ')])];
+  exportXlsx(`Mas vendidos ${m.sucs.map(sucAb).join('-')}${m.fams.length?' '+m.fams.length+' rubros':''} ${stamp()}.xlsx`,[{name:'Mas vendidos',rows}]);
 }
 
 /* ---------- Vista: Pedidos Ford (herramienta BO/OD) ---------- */
@@ -2853,6 +2940,9 @@ document.addEventListener('click',e=>{
   else if(a==='closeSave'){u.saveOpen=false;render()}
   else if(a==='resetFin'){S.finals={};saveDraft();recompute();render()}
   else if(a==='exportSug')exportSug();
+  else if(a==='mvXls')mvXls();
+  else if(a==='mvSort'){mvUi().sort=t.dataset.k;render()}
+  else if(a==='mvFamAll'){e.preventDefault();mvUi().fams=[];render()}
   else if(a==='exportCsv')exportCsv();
   else if(a==='logout'){window.__logout&&window.__logout()}
   else if(a==='backup'){dl&&dl.save({filename:`Respaldo Estandar Stock ${fDate(new Date())}.json`,data:window.__backup()}).then(()=>toast('Respaldo descargado.'))}
@@ -2904,6 +2994,7 @@ document.addEventListener('input',e=>{
   const t=e.target,u=S.ui;
   if(t.id==='stQ'&&S.pending){const pu=S.pending.ui||(S.pending.ui={});pu.q=t.value;pu.n=100;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart,y=window.scrollY;render();window.scrollTo(0,y);const n=$('#stQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.id==='fybQ'){u.fybQ=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=$('#fybQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
+  if(t.id==='mvQ'){u.mvQ=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=$('#mvQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.id==='q'||t.id==='stdQ'||t.id==='candQ'){u[t.id]=t.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=t.selectionStart;render();const n=document.getElementById(t.id);if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250);return}
   if(t.dataset.fin){const l=S.byCode.get(t.dataset.fin);let v=Math.max(0,num(t.value));if(v===l.sug)delete S.finals[l.code];else S.finals[l.code]=v;t.classList.toggle('chg',S.finals[l.code]!=null);
     const c=document.querySelector(`[data-tot="${CSS.escape(l.code)}"]`);if(c)c.textContent=v?f$(v*(l.cost||0)):'';updateTotals();saveDraft();return}
@@ -2919,6 +3010,9 @@ document.addEventListener('change',e=>{
   if(t.id==='origSel'){S.P.origen=t.value;saveParams();recompute();render();toast(t.value?`Mostrando solo origen ${t.value==='N'?'N · Original':'P · Nacional'}`:'Mostrando todos los orígenes');return}
   if(t.id==='actSuc'||t.id==='actUser'){S.ui[t.id]=t.value;render();return}
   if(t.id==='fam'){u.fam=t.value;render();return}
+  if(t.id==='mvTop'){mvUi().top=+t.value;render();return}
+  if(t.dataset.mvsuc){const m=mvUi(),k=t.dataset.mvsuc;m.sucs=t.checked?mySucs().filter(x=>x===k||m.sucs.includes(x)):m.sucs.filter(x=>x!==k);if(!m.sucs.length){m.sucs=[k];toast('Elegí al menos una sucursal.')}render();return}
+  if(t.dataset.mvfam){const m=mvUi(),k=t.dataset.mvfam;m.fams=t.checked?[...new Set([...m.fams,k])]:m.fams.filter(x=>x!==k);render();return}
   if(t.id==='stdEst'){u.stdEst=t.value;render();return}
   if(t.id==='mapSheet'){setSheet(t.value);return}
   if(t.id==='mapHdr'){S.pending.h=Math.max(0,num(t.value)-1);autoMap();render();return}
