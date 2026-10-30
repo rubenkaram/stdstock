@@ -2365,17 +2365,26 @@ const CR={std:['Estándar','Piezas del estándar de la sucursal, primero las de 
 const CR4=['std','ven','caro','todo'];
 const ctrlCfg=()=>{const c=S.ctrlCfg||(S.ctrlCfg={});c.n=c.n||15;c.top=c.top||100;c.vueltas=c.vueltas||{};return c};
 const saveCtrlCfg=()=>queueWrite('config/ctrl',()=>ctrlCfg());
+/* origen del control: 'N', 'P' o '' (N+P juntos). Se guarda en config/ctrl; los controles viejos (sin origen) son N+P */
+const CORIG={N:'N original',P:'P nacional','':'N+P'};
+const ctrlOrig=()=>{const o=ctrlCfg().orig;return o==='N'||o==='P'?o:''};
+const cOrigOf=c=>c&&(c.origen==='N'||c.origen==='P')?c.origen:'';
+/* líneas (estándar, ventas, stock) calculadas con el origen del control, independiente del selector de arriba */
+function ctrlLines(){const o=ctrlOrig();if(!S.res)return [];if((S.P.origen||'')===o)return S.res.lines;
+  const k=[S.P.sucursal,o,S.D.ventas&&S.D.ventas.meta.loadedAt,S.D.stock&&S.D.stock.meta.loadedAt,stdSet().size,S.P.dias,S.res.lines.length].join('|');
+  if(S._ctrlL&&S._ctrlL.k===k)return S._ctrlL.L;
+  const L=compute(Object.assign({transf:transfOn(S.P.sucursal)},S.D),stdSet(),Object.assign({},S.P,{origen:o})).lines;S._ctrlL={k,L};return L}
 const ctrlsSuc=()=>(S.ctrls||[]).filter(x=>x.suc===S.P.sucursal).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
 function isoWeek(d){d=new Date(d);const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y=t.getUTCFullYear();const w=Math.ceil(((t-Date.UTC(y,0,1))/864e5+1)/7);return y+'-S'+String(w).padStart(2,'0')}
-/* stock físico por código: N y P juntos (están en la misma estantería con el mismo código) */
-function ctrlStock(){
+/* stock físico por código según el origen del control (N, P o N+P juntos: misma estantería, mismo código) */
+function ctrlStock(orig){
   const m=new Map();if(!S.D.stock)return m;
-  for(const r of S.D.stock.rows){const q=num(r[2]),cost=r[3]==null||r[3]===''?null:num(r[3]);let o=m.get(r[0]);
+  for(const r of S.D.stock.rows){if(orig&&r[5]&&r[5]!==orig)continue;const q=num(r[2]),cost=r[3]==null||r[3]===''?null:num(r[3]);let o=m.get(r[0]);
     if(!o){o={q:0,val:0,vq:0,orig:'',desc:r[1]};m.set(r[0],o)}o.q+=q;if(cost!=null&&q>0){o.val+=cost*q;o.vq+=q}const og=r[5]||'';if(og&&o.orig.indexOf(og)<0)o.orig+=(o.orig?'+':'')+og}
   for(const o of m.values())o.cost=o.vq?o.val/o.vq:null;return m;
 }
 function ctrlUniverse(cr){
-  const L=(S.res&&S.res.lines)||[],top=ctrlCfg().top;const v=l=>Math.max(0,l.st)*(l.cost||0);
+  const L=ctrlLines(),top=ctrlCfg().top;const v=l=>Math.max(0,l.st)*(l.cost||0);
   if(cr==='std')return L.filter(l=>l.inStd).sort((a,b)=>v(b)-v(a)||b.q6-a.q6);
   if(cr==='ven')return L.filter(l=>l.q6>0).sort((a,b)=>b.q6-a.q6).slice(0,top);
   if(cr==='caro')return L.filter(l=>l.q6>0&&l.cost).sort((a,b)=>b.cost-a.cost).slice(0,top);
@@ -2383,7 +2392,8 @@ function ctrlUniverse(cr){
 }
 function ctrlVuelta(cr){const V=ctrlCfg().vueltas,k=S.P.sucursal;const o=(V[k]||(V[k]={}))[cr]||(V[k][cr]={n:1,desde:'2000-01-01'});return o}
 /* códigos ya controlados (en cualquier control de la sucursal) desde una fecha */
-function ctrlDoneSince(desde){const s=new Set();for(const c of ctrlsSuc())if(c.fecha>=desde)for(const it of c.items)s.add(it.c);return s}
+/* un control N+P cubre cualquier origen; uno de N o de P cubre solo ese origen */
+function ctrlDoneSince(desde){const o=ctrlOrig(),s=new Set();for(const c of ctrlsSuc()){const co=cOrigOf(c);if(c.fecha>=desde&&(co===''||co===o))for(const it of c.items)s.add(it.c)}return s}
 function ctrlProgress(cr){const U=ctrlUniverse(cr),V=ctrlVuelta(cr),done=ctrlDoneSince(V.desde);const pend=U.filter(l=>!done.has(l.code));return {U,V,pend,hechas:U.length-pend.length}}
 function ctrlShare(){const n=ctrlCfg().n,b=Math.floor(n/4),r=n-b*4;const o={};CR4.forEach((k,i)=>o[k]=b+(i<r?1:0));return o}
 async function ctrlUbic(){
@@ -2404,11 +2414,11 @@ async function ctrlGen(){
   /* si un criterio del mixto no alcanza, completa con Todo el stock */
   if(pick.length<n){const P=ctrlProgress('todo');for(const l of P.pend){if(pick.length>=n)break;if(!seen.has(l.code)){seen.add(l.code);pick.push([l,'todo'])}}}
   if(!pick.length){toast('No hay piezas para controlar con ese criterio.');return}
-  const st=ctrlStock(),ub=await ctrlUbic();
-  const items=pick.map(([l,k])=>{const s=st.get(l.code);return {c:l.code,d:l.desc,u:ub.get(norm(l.code))||'',o:s?s.orig:l.orig,s:s?s.q:0,k:s&&s.cost!=null?s.cost:l.cost,q:null,nt:'',cr:k}})
+  const og=ctrlOrig(),st=ctrlStock(og),ub=await ctrlUbic();
+  const items=pick.map(([l,k])=>{const s=st.get(l.code);return {c:l.code,d:l.desc,u:ub.get(norm(l.code))||'',o:s?s.orig:(og||l.orig),s:s?s.q:0,k:s&&s.cost!=null?s.cost:l.cost,q:null,nt:'',cr:k}})
     .sort((a,b)=>(a.u||'~').localeCompare(b.u||'~',undefined,{numeric:true})||a.c.localeCompare(b.c));
-  const doc={suc:S.P.sucursal,fecha:new Date().toISOString(),semana:isoWeek(new Date()),criterio:cr,vueltas:vu,estado:'Abierto',usuario:ME()?ME().email:'',stockFecha:S.D.stock.meta.fecha||'',items};
-  try{const r=await db.collection('controles').add(doc);saveCtrlCfg();S.ui.ctrlOpen=r.id;logAct('Generó control de stock',`${CR[cr][0]} · ${items.length} piezas`);toast(`Control generado: ${items.length} piezas. Imprimí la planilla y cargá lo contado.`);render()}
+  const doc={suc:S.P.sucursal,fecha:new Date().toISOString(),semana:isoWeek(new Date()),criterio:cr,origen:og,vueltas:vu,estado:'Abierto',usuario:ME()?ME().email:'',stockFecha:S.D.stock.meta.fecha||'',items};
+  try{const r=await db.collection('controles').add(doc);saveCtrlCfg();S.ui.ctrlOpen=r.id;logAct('Generó control de stock',`${CR[cr][0]} · origen ${CORIG[og]} · ${items.length} piezas`);toast(`Control generado: ${items.length} piezas. Imprimí la planilla y cargá lo contado.`);render()}
   catch(e){toast('No se pudo guardar el control: '+(e.message||e.code))}
 }
 function ctrlSum(c){
@@ -2435,7 +2445,7 @@ function vCtrl(){
   const stockOld=S.D.stock&&S.D.stock.meta.fecha&&(Date.now()-new Date(S.D.stock.meta.fecha+'T12:00:00'))/864e5>3;
   let det='';
   if(sel){const closed=sel.estado==='Cerrado',R=ctrlSum(sel);
-    det=`<section class="panel" id="ctrlDet"><div class="panel-h"><div><h2>Control del ${fD(sel.fecha.slice(0,10))} · ${esc(CR[sel.criterio]?CR[sel.criterio][0]:sel.criterio)}</h2><p class="sub">${esc(sel.suc)} · semana ${esc(sel.semana.split('-S')[1])} · stock del sistema al ${fD(sel.stockFecha)} · ${esc(sel.usuario||'')} · <b>${esc(sel.estado)}</b>${sel.cerradoAt?` el ${fD(sel.cerradoAt.slice(0,10))}`:''}</p></div>
+    det=`<section class="panel" id="ctrlDet"><div class="panel-h"><div><h2>Control del ${fD(sel.fecha.slice(0,10))} · ${esc(CR[sel.criterio]?CR[sel.criterio][0]:sel.criterio)} · origen ${CORIG[cOrigOf(sel)]}</h2><p class="sub">${esc(sel.suc)} · semana ${esc(sel.semana.split('-S')[1])} · stock del sistema al ${fD(sel.stockFecha)} · ${esc(sel.usuario||'')} · <b>${esc(sel.estado)}</b>${sel.cerradoAt?` el ${fD(sel.cerradoAt.slice(0,10))}`:''}</p></div>
       <div class="toolbar"><button class="btn" data-act="ctrlPrint">Imprimir planilla</button><button class="btn" data-act="ctrlXls">Exportar Excel</button>
       ${closed?(isAdmin()?`<button class="btn" data-act="ctrlReopen">Reabrir</button>`:''):`<button class="btn" data-act="ctrlSync" title="Reemplaza el stock del sistema por el último cargado (${fD(S.D.stock&&S.D.stock.meta.fecha)})">Tomar stock actual</button><button class="btn pri" data-act="ctrlClose"${R.cont<R.n?' title="Hay piezas sin contar"':''}>Cerrar control</button>`}
       ${u.ctrlDel===sel.id?`<span class="confirm">¿Eliminar este control? <button class="btn sm danger" data-act="ctrlDelYes">Sí, eliminar</button><button class="btn sm" data-act="ctrlDelNo">No</button></span>`:(!closed||isAdmin()?`<button class="btn danger" data-act="ctrlDel">Eliminar</button>`:'')}</div></div>
@@ -2448,8 +2458,8 @@ function vCtrl(){
         <td class="n" data-cdif="${i}">${ctrlDifCell(it)}</td><td class="n">${it.k==null?'–':f$(it.k)}</td>
         <td>${closed?esc(it.nt||''):`<input type="text" data-cnota="${i}" value="${esc(it.nt||'')}" placeholder="opcional" style="width:180px;padding:3px 6px">`}</td></tr>`).join('')}</tbody></table></div>
       ${closed?'':`<p class="faint" style="margin:8px 0 0">Cargá lo contado y pasá con Enter a la siguiente. Se guarda solo. Si no hay ninguna, poné 0.</p>`}</section>`}
-  const hist=L.length?`<div class="tw" style="max-height:420px"><table><thead><tr><th>Fecha</th><th>Semana</th><th>Criterio</th><th>Estado</th><th class="n">Piezas</th><th class="n">Contadas</th><th class="n">Exactitud</th><th class="n">Faltante</th><th class="n">Sobrante</th><th>Usuario</th></tr></thead><tbody>
-    ${L.map(x=>{const R=ctrlSum(x);return `<tr data-ctrl="${x.id}" style="cursor:pointer"${x.id===(sel&&sel.id)?' class="trf"':''}><td>${fD(x.fecha.slice(0,10))}</td><td>${esc(x.semana.split('-S')[1])}</td><td>${esc(CR[x.criterio]?CR[x.criterio][0]:x.criterio)}</td><td>${x.estado==='Cerrado'?'<span class="pill p-ok">Cerrado</span>':'<span class="pill p-bajo">Abierto</span>'}</td><td class="n">${R.n}</td><td class="n">${R.cont}</td><td class="n">${R.exact==null?'–':fN(R.exact,0)+' %'}</td><td class="n">${f$(R.fal$)}</td><td class="n">${f$(R.sob$)}</td><td>${esc(x.usuario||'')}</td></tr>`}).join('')}</tbody></table></div>`
+  const hist=L.length?`<div class="tw" style="max-height:420px"><table><thead><tr><th>Fecha</th><th>Semana</th><th>Criterio</th><th>Origen</th><th>Estado</th><th class="n">Piezas</th><th class="n">Contadas</th><th class="n">Exactitud</th><th class="n">Faltante</th><th class="n">Sobrante</th><th>Usuario</th></tr></thead><tbody>
+    ${L.map(x=>{const R=ctrlSum(x);return `<tr data-ctrl="${x.id}" style="cursor:pointer"${x.id===(sel&&sel.id)?' class="trf"':''}><td>${fD(x.fecha.slice(0,10))}</td><td>${esc(x.semana.split('-S')[1])}</td><td>${esc(CR[x.criterio]?CR[x.criterio][0]:x.criterio)}</td><td>${CORIG[cOrigOf(x)]}</td><td>${x.estado==='Cerrado'?'<span class="pill p-ok">Cerrado</span>':'<span class="pill p-bajo">Abierto</span>'}</td><td class="n">${R.n}</td><td class="n">${R.cont}</td><td class="n">${R.exact==null?'–':fN(R.exact,0)+' %'}</td><td class="n">${f$(R.fal$)}</td><td class="n">${f$(R.sob$)}</td><td>${esc(x.usuario||'')}</td></tr>`}).join('')}</tbody></table></div>`
     :`<div class="empty">Todavía no hay controles en ${esc(S.P.sucursal)}.</div>`;
   const cerr=L.filter(x=>x.estado==='Cerrado');const tot=cerr.reduce((a,x)=>{const R=ctrlSum(x);a.c+=R.cont;a.ok+=R.ok;a.f+=R.fal$;a.s+=R.sob$;return a},{c:0,ok:0,f:0,s:0});
   return `<section class="panel"><div class="panel-h"><div><h2>Control de stock · ${esc(S.P.sucursal)}</h2><p class="sub">Un conteo por semana de pocas piezas. Cada control elige piezas que todavía no se contaron en la vuelta actual del criterio, así se va rotando y con el tiempo se controla todo el stock. Al terminar una vuelta empieza otra.</p></div></div>
@@ -2458,10 +2468,11 @@ function vCtrl(){
       <div class="tile"><div class="l">Exactitud acumulada</div><div class="v">${tot.c?fN(tot.ok/tot.c*100,0)+' %':'–'}</div></div>
       <div class="tile"><div class="l">Faltante acumulado</div><div class="v" style="color:${tot.f?'var(--crit)':'inherit'}">${f$(tot.f)}</div><div class="n">sobrante ${f$(tot.s)}</div></div></div>
     <div class="toolbar" style="margin-bottom:14px"><label class="suc" for="ctrlCr">Criterio</label><select id="ctrlCr">${Object.entries(CR).map(([k,o])=>`<option value="${k}"${k===cr?' selected':''}>${o[0]}</option>`).join('')}</select>
+      <label class="suc" for="ctrlOrig" title="Qué stock se cuenta. N+P: las dos en la misma estantería con el mismo código">Origen</label><select id="ctrlOrig"${ctrlOrig()?' style="border-color:#d97706;background:#fff7ed;color:#9a3412"':''}>${['N','P',''].map(k=>`<option value="${k}"${k===ctrlOrig()?' selected':''}>${k===''?'N+P (juntos)':k==='N'?'N · Original':'P · Nacional'}</option>`).join('')}</select>
       <label class="suc" for="ctrlN">Piezas</label><input type="number" id="ctrlN" min="1" max="200" value="${cfg.n}" style="width:70px">
       <label class="suc" for="ctrlTop" title="Cuántas piezas entran en Más vendidos y Más caros vendidos">Top vendidos / caros</label><input type="number" id="ctrlTop" min="10" max="5000" value="${cfg.top}" style="width:80px">
       <button class="btn pri" data-act="ctrlGen"${S.D.stock&&db?'':' disabled'}>Generar control${thisWeek.length?' (ya hay uno esta semana)':' de esta semana'}</button></div>
-    <p class="faint" style="margin:-6px 0 12px">${esc(CR[cr][1])}${cr==='mix'?`: ${CR4.map(k=>share[k]+' '+CR[k][0].toLowerCase()).join(', ')}`:''}. ${S.D.stock?`Stock del sistema al ${fD(S.D.stock.meta.fecha)}.`:'<b>Falta cargar el stock.</b>'}</p>
+    <p class="faint" style="margin:-6px 0 12px">${esc(CR[cr][1])}${cr==='mix'?`: ${CR4.map(k=>share[k]+' '+CR[k][0].toLowerCase()).join(', ')}`:''}. Origen: ${ctrlOrig()?'solo '+CORIG[ctrlOrig()]+' (stock y piezas de ese origen)':'N y P juntos (se suma el stock de los dos)'}; no depende del selector de arriba. ${S.D.stock?`Stock del sistema al ${fD(S.D.stock.meta.fecha)}.`:'<b>Falta cargar el stock.</b>'}</p>
     <div class="cards">${prog}</div></section>
   ${det}
   <section class="panel"><div class="panel-h"><div><h3>Controles anteriores</h3><p class="sub">Tocá uno para verlo o seguir cargándolo.</p></div>${L.length?'<button class="btn" data-act="ctrlHistXls">Exportar todo</button>':''}</div>${hist}</section>`;
@@ -2469,14 +2480,14 @@ function vCtrl(){
 function ctrlSel(){return (S.ctrls||[]).find(x=>x.id===S.ui.ctrlOpen)||ctrlsSuc().find(x=>x.estado!=='Cerrado')}
 function ctrlSave(c){const id=c.id,o=Object.assign({},c);delete o.id;return db.doc('controles/'+id).set(o).catch(e=>toast('No se pudo guardar: '+(e.message||e.code)))}
 function ctrlRows(c){return [['Ubicación','Código','Descripción','Origen','Criterio','Sistema','Contado','Diferencia','Costo','$ diferencia','Observación'],...c.items.map(it=>{const d=it.q==null?'':it.q-it.s;return [it.u,it.c,it.d,it.o,CR[it.cr]?CR[it.cr][0]:'',it.s,it.q==null?'':it.q,d,it.k==null?'':r2(it.k),d===''?'':r2(d*(it.k||0)),it.nt||'']})]}
-function ctrlXls(c){exportXlsx(`Control stock ${c.suc} ${c.fecha.slice(0,10)}.xlsx`,[{name:'Control',rows:ctrlRows(c)}])}
-function ctrlHistXls(){const rows=[['Fecha','Semana','Sucursal','Criterio','Estado','Usuario','Ubicación','Código','Descripción','Sistema','Contado','Diferencia','Costo','$ diferencia','Observación']];
-  for(const c of ctrlsSuc())for(const it of c.items){const d=it.q==null?'':it.q-it.s;rows.push([c.fecha.slice(0,10),c.semana,c.suc,CR[c.criterio]?CR[c.criterio][0]:c.criterio,c.estado,c.usuario||'',it.u,it.c,it.d,it.s,it.q==null?'':it.q,d,it.k==null?'':r2(it.k),d===''?'':r2(d*(it.k||0)),it.nt||''])}
+function ctrlXls(c){exportXlsx(`Control stock ${c.suc} ${CORIG[cOrigOf(c)]} ${c.fecha.slice(0,10)}.xlsx`,[{name:'Control',rows:ctrlRows(c)}])}
+function ctrlHistXls(){const rows=[['Fecha','Semana','Sucursal','Criterio','Origen del control','Estado','Usuario','Ubicación','Código','Descripción','Sistema','Contado','Diferencia','Costo','$ diferencia','Observación']];
+  for(const c of ctrlsSuc())for(const it of c.items){const d=it.q==null?'':it.q-it.s;rows.push([c.fecha.slice(0,10),c.semana,c.suc,CR[c.criterio]?CR[c.criterio][0]:c.criterio,CORIG[cOrigOf(c)],c.estado,c.usuario||'',it.u,it.c,it.d,it.s,it.q==null?'':it.q,d,it.k==null?'':r2(it.k),d===''?'':r2(d*(it.k||0)),it.nt||''])}
   exportXlsx(`Controles de stock ${S.P.sucursal} ${stamp()}.xlsx`,[{name:'Controles',rows}])}
 function ctrlPrint(c){
   const w=window.open('','_blank');if(!w){toast('El navegador bloqueó la ventana: permití ventanas emergentes.');return}
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Control de stock ${esc(c.suc)} ${fD(c.fecha.slice(0,10))}</title><style>body{font:12px system-ui,sans-serif;margin:18px;color:#000}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 10px;color:#444}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:6px 7px;text-align:left}th{background:#eee}td.n{text-align:right}td.box{width:70px}td.obs{width:150px}.code{font-family:ui-monospace,monospace}.f{margin-top:24px;display:flex;gap:40px}.f div{border-top:1px solid #000;padding-top:4px;width:200px}@media print{body{margin:8mm}}</style></head><body>
-    <h1>Control de stock · ${esc(c.suc)}</h1><p>${fD(c.fecha.slice(0,10))} · semana ${esc(c.semana.split('-S')[1])} · ${esc(CR[c.criterio]?CR[c.criterio][0]:c.criterio)} · ${c.items.length} piezas. Contar sin mirar el sistema y anotar la cantidad física.</p>
+    <h1>Control de stock · ${esc(c.suc)}</h1><p>${fD(c.fecha.slice(0,10))} · semana ${esc(c.semana.split('-S')[1])} · ${esc(CR[c.criterio]?CR[c.criterio][0]:c.criterio)} · origen <b>${CORIG[cOrigOf(c)]}</b> · ${c.items.length} piezas. ${cOrigOf(c)?`Contar solo las unidades de origen ${cOrigOf(c)}.`:'Contar N y P juntas.'} Contar sin mirar el sistema y anotar la cantidad física.</p>
     <table><thead><tr><th>#</th><th>Ubicación</th><th>Código</th><th>Descripción</th><th>Contado</th><th>Observación</th></tr></thead><tbody>
     ${c.items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(it.u)}</td><td class="code">${esc(it.c)}</td><td>${esc(it.d)}</td><td class="box"></td><td class="obs"></td></tr>`).join('')}</tbody></table>
     <div class="f"><div>Contó</div><div>Controló</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
@@ -2956,7 +2967,7 @@ document.addEventListener('click',e=>{
   else if(a==='ctrlPrint'){const c=ctrlSel();c&&ctrlPrint(c)}
   else if(a==='ctrlXls'){const c=ctrlSel();c&&ctrlXls(c)}
   else if(a==='ctrlHistXls')ctrlHistXls();
-  else if(a==='ctrlSync'){const c=ctrlSel();if(!c)return;const st=ctrlStock();c.items.forEach(it=>{const x=st.get(it.c);it.s=x?x.q:0;if(x&&x.cost!=null)it.k=x.cost});c.stockFecha=S.D.stock?S.D.stock.meta.fecha:c.stockFecha;ctrlSave(c);render();toast('Stock del sistema actualizado al '+fD(c.stockFecha)+'.')}
+  else if(a==='ctrlSync'){const c=ctrlSel();if(!c)return;const st=ctrlStock(cOrigOf(c));c.items.forEach(it=>{const x=st.get(it.c);it.s=x?x.q:0;if(x&&x.cost!=null)it.k=x.cost});c.stockFecha=S.D.stock?S.D.stock.meta.fecha:c.stockFecha;ctrlSave(c);render();toast('Stock del sistema actualizado al '+fD(c.stockFecha)+'.')}
   else if(a==='ctrlClose'||a==='ctrlCloseYes'){const c=ctrlSel();if(!c)return;const R=ctrlSum(c);if(a==='ctrlClose'&&R.cont<R.n){u.ctrlCloseAsk=c.id;render();return}
     const pend=c.items.filter(it=>it.q==null).length;c.items=c.items.filter(it=>it.q!=null);c.estado='Cerrado';c.cerradoAt=new Date().toISOString();c.cerradoPor=ME()?ME().email:'';u.ctrlCloseAsk=null;
     if(!c.items.length){db.doc('controles/'+c.id).delete();u.ctrlOpen=null;toast('No había nada contado: se eliminó el control.');return}
@@ -3023,6 +3034,7 @@ document.addEventListener('change',e=>{
   if(t.id==='stSuc'&&S.pending){(S.pending.ui||(S.pending.ui={})).suc=t.value;S.pending.ui.n=100;render();return}
   if(t.id==='depMet'){S.ui.depMet=t.value;render();return}
   if(t.id==='ctrlCr'){u.ctrlCr=t.value;render();return}
+  if(t.id==='ctrlOrig'){ctrlCfg().orig=t.value;saveCtrlCfg();render();toast('Control de stock: origen '+CORIG[ctrlOrig()]);return}
   if(t.id==='ctrlN'||t.id==='ctrlTop'){const c=ctrlCfg(),v=Math.round(num(t.value));if(t.id==='ctrlN')c.n=Math.min(200,Math.max(1,v||15));else c.top=Math.min(5000,Math.max(10,v||100));saveCtrlCfg();render();return}
   if(t.dataset.cnt!=null||t.dataset.cnota!=null){const c=ctrlSel();if(!c||c.estado==='Cerrado')return;
     if(t.dataset.cnota!=null){c.items[+t.dataset.cnota].nt=t.value.trim();ctrlSave(c);return}
