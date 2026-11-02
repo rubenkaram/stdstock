@@ -123,6 +123,33 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
 .kv dt{color:var(--muted)}.kv dd{margin:0;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.tile .v{font-size:19px}.brand h1{font-size:19px}header.top{position:static}.chip{white-space:normal}.toprow{padding-block:10px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Percent Fill */
+.pf-load{display:grid;gap:14px}
+.pf-row{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-start}
+.pf-f{display:grid;gap:4px;font-size:12.5px;font-weight:600;color:var(--muted);min-width:0}
+.pf-f .faint{font-weight:400;font-size:11.5px}
+.pf-f input[type=number]{font:600 17px var(--f-mono);width:190px;max-width:100%}
+input[type=month]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 9px}
+.pf-zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.pf-drop{position:relative;display:grid;gap:6px;align-content:start;border:2px dashed var(--line);border-radius:10px;background:var(--surface2);padding:14px;min-height:130px;cursor:pointer;transition:border-color .15s,background .15s}
+.pf-drop:hover,.pf-drop:focus-within{border-color:var(--accent)}
+.pf-drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.pf-drop.ok{border-style:solid;border-color:var(--ok)}
+.pf-drop.err{border-style:solid;border-color:var(--crit)}
+.pf-t{font-weight:700;font-size:14.5px}
+.pf-file{font:12px var(--f-mono);word-break:break-all}
+.pf-msg{font-size:12.5px;color:var(--ok)}.pf-msg.e{color:var(--crit)}
+.pf-chk{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);cursor:pointer}
+.pf-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}
+.pf-card{display:grid;gap:8px;align-content:start}
+.pf-big{font:600 40px/1 var(--f-display);color:var(--warn);font-variant-numeric:tabular-nums}
+.pf-big small{font-size:20px}
+.pf-bar{height:8px;border-radius:2px;background:var(--accent-soft);overflow:hidden}.pf-bar i{display:block;height:100%;background:var(--warn)}
+.pf-fill{font-size:13px}.pf-fill b{color:var(--ok);font-variant-numeric:tabular-nums}
+.pf-dl{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:4px 0 0;font-size:12.5px}
+.pf-dl dt{color:var(--muted)}.pf-dl dd{margin:0;text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.pf-dl .tot{border-top:1px solid var(--line);padding-top:3px;color:var(--ink);font-weight:600}
+tr.pf-tr{cursor:pointer}tr.pf-tr:hover td{background:var(--surface2)}tr.pf-tr.sel td{background:var(--accent-soft)}
 </style>
 </head><body>
 
@@ -1782,7 +1809,7 @@ let db=null,dl=null;
 const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca','Quick Lane'],sucMap:{'CASA CENTRAL':'La Rioja','QUICK LANE LA RIOJA':'Quick Lane','WINGS 60580':'Quick Lane'},sucCfg:{'Quick Lane':{transf:true}},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
   tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
   ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
-const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['vendidos','Más vendidos'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['vendidos','Más vendidos'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['fill','Percent Fill'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
 const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
@@ -1876,6 +1903,7 @@ async function boot(){
     S.D.oq=oq;S.D.ddp=ddp;S.base=base;
     await useSuc(S.P.sucursal);
     if(ME()&&ME().admin)db.collection('actividad').onSnapshot(snap=>{S.act=snap.docs.map(x=>x.data()).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&S.tab==='actividad')render()},()=>{});
+    db.collection('pfill').onSnapshot(snap=>{const o={};snap.docs.forEach(x=>{o[x.id]=x.data()});S.pfill=o;const ae=document.activeElement;if(!S.loading&&S.tab==='fill'&&!(ae&&ae.closest&&ae.closest('#main')&&ae.matches('input')))render()},()=>{});
     db.collection('depositos').onSnapshot(snap=>{S.depos=snap.docs.map(x=>x.data());if(!S.loading&&S.tab==='depositos')render()},()=>{});
     db.collection('controles').onSnapshot(snap=>{S.ctrls=snap.docs.map(x=>Object.assign({id:x.id},x.data()));const a=document.activeElement;if(!S.loading&&S.tab==='control'&&!(a&&a.closest&&a.closest('#main')&&a.matches('input,select,textarea')))render()},()=>{});
     db.collection('sugeridos').onSnapshot(snap=>{S.saved=snap.docs.map(x=>Object.assign({id:x.id},x.data())).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&(S.tab==='historial'))render();renderChips()},()=>{});
@@ -1920,13 +1948,14 @@ function render(){
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
   if(!can(S.tab)){m.innerHTML='<div class="empty">Tu usuario no tiene acceso a ninguna sección. Pedile acceso al administrador.</div>';return}
-  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl}[S.tab]||vSug;
+  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl,fill:vFill}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
   if(S.tab==='ford')mountFord();
   if(S.tab==='fyb')loadFyb();
   if(S.tab==='usuarios'&&!S.usrs&&!S.usrsLoading)loadUsers();
+  if(S.tab==='fill')bindPfChart();
 }
 function needData(){
   const per=S.D.ventas&&S.D.ventas.meta.diasPer&&S.res&&S.res.dias<S.P.dias?`<div class="note warn"><b>Las ventas de ${esc(stdKey())} cubren solo ${fD(S.D.ventas.meta.desde)} a ${fD(S.D.ventas.meta.hasta)}</b> (${fN(S.res.dias,1)} días hábiles). El MAD se calcula con ese período; con menos de 6 meses la demanda es menos confiable. Cargá ventas de 6 meses en <button class="btn sm" data-tab="datos">Cargar datos</button>.</div>`:'';
@@ -3061,6 +3090,192 @@ document.addEventListener('submit',e=>{
     saveFybItems(S.fyb.items.concat([[$('#fybCat').value,c,l?l.desc:'',$('#fybApl').value.trim()]])).then(()=>{logAct('Agregó a filtros y bujías',c,'Todas');render();toast(c+' agregada.')}).catch(err=>toast('No se pudo: '+(err.message||err.code)));return}
   if(e.target.id==='addStd'){const c=norm($('#addCode').value);if(!c)return;logAct('Agregó al estándar',c);const k=stdKey();S.stdBy[k]=[...new Set([...(S.stdBy[k]||[]),c])];saveStd();recompute();render();toast(c+' agregada al estándar'+(S.byCode.get(c)&&S.byCode.get(c).enStock?'':' (no figura en stock ni ventas)'))}
 });
+/* ===== Percent Fill: % de piezas origen N pedidas bajo demanda sobre lo vendido (Mostrador y Oportunidad comercial/taller) ===== */
+/* Cantidades bajo demanda de la planilla de Ruben (jul–oct 26); se usan para precargar el mes si todavía no se guardó */
+const PF_DEM0={'2026-07':{m:2,o:1},'2026-08':{m:0,o:32},'2026-09':{m:24,o:38},'2026-10':{m:40,o:31}};
+const PF_MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const pfMesL=k=>{const m=String(k||'').match(/^(\d{4})-(\d{2})$/);return m?PF_MES[+m[2]-1]+' '+m[1]:k};
+const pfQ=n=>n==null||isNaN(n)?'–':Number.isInteger(+n)?fN(n):Number(n).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const pfP=n=>n==null||isNaN(n)?'–':Number(n).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})+' %';
+const pfSuc=s=>/CATAMARCA/i.test(s)?'Catamarca':/CASA CENTRAL/i.test(s)?'La Rioja':s;
+function pfParse(rows){
+  const title=String(rows[0]&&rows[0][0]||'').toLowerCase();
+  const tipo=title.includes('mostrador')?'mostrador':title.includes('taller')?'taller':null;
+  if(!tipo)throw new Error('No es un reporte de ventas de Autologica. Tiene que ser "Ventas de repuestos a mostrador" (por proveedor y familia) o "Planilla de ventas de repuestos a taller" (por proveedor).');
+  const qcol=tipo==='mostrador'?6:8;let periodo=null;
+  for(const r of rows.slice(0,10))for(const c of r){const m=String(c).match(/Fecha entre\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+y\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)periodo={desde:`${m[1]}/${m[2]}/${m[3]}`,hasta:`${m[4]}/${m[5]}/${m[6]}`,mes:`${m[6]}-${m[5].padStart(2,'0')}`,mismoMes:m[2]===m[5]&&m[3]===m[6]}}
+  let suc='—',taller='',total=null;const bySuc={},orig={};
+  for(const r of rows){
+    for(let i=0;i<r.length;i++){if(r[i]==='Sucursal:')suc=String(r[i+2]||r[i+1]).trim();if(r[i]==='Taller:')taller=String(r[i+2]||'').trim();if(r[i]==='TOTAL'&&typeof r[i+1]==='number'&&total===null)total=r[i+1]}
+    const cod=r[0],o0=r[2],q=r[qcol];
+    if(cod!==''&&typeof q==='number'&&typeof o0==='string'&&o0.trim().length>=1&&o0.trim().length<=2){
+      const o=o0.trim().toUpperCase();orig[o]=(orig[o]||0)+q;if(o!=='N')continue;
+      const s=bySuc[suc]||(bySuc[suc]={u:0,r:0,dpU:0,dpR:0});
+      if(/DEALER\s*PRE/i.test(taller)){s.dpU+=q;if(q>0)s.dpR++}else{s.u+=q;if(q>0)s.r++}
+    }
+  }
+  for(const k in bySuc)for(const f in bySuc[k])bySuc[k][f]=r2(bySuc[k][f]);
+  if(!Object.keys(bySuc).length)throw new Error('El reporte no tiene repuestos con origen N.');
+  const sum=Object.values(orig).reduce((a,b)=>a+b,0);
+  return {tipo,periodo,bySuc,cuadra:total===null||Math.abs(sum-total)<0.01,total};
+}
+function pfUi(){const u=S.ui;if(!u.pf){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);u.pf={mes:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,modo:'u',dp:true,drafts:{},msg:{}}}return u.pf}
+function pfDraft(mes){const p=pfUi();return p.drafts[mes]||(p.drafts[mes]={})}
+/* datos efectivos del mes: lo cargado sin guardar pisa lo guardado */
+function pfMonth(mes){
+  const sv=(S.pfill||{})[mes]||{},dr=(pfUi().drafts[mes])||{},d0=PF_DEM0[mes]||{};
+  const pick=(k,k0)=>dr[k]!=null?dr[k]:sv[k]!=null?sv[k]:d0[k0]!=null?d0[k0]:null;
+  return {mes,saved:!!S.pfill&&!!S.pfill[mes],
+    mostrador:dr.mostrador?dr.mostrador.bySuc:sv.mostrador||null,taller:dr.taller?dr.taller.bySuc:sv.taller||null,
+    demM:pick('demM','m'),demO:pick('demO','o'),
+    archivos:{mostrador:dr.mostrador?dr.mostrador.file:(sv.archivos||{}).mostrador||'',taller:dr.taller?dr.taller.file:(sv.archivos||{}).taller||''},
+    periodo:{mostrador:dr.mostrador?dr.mostrador.periodo:(sv.periodo||{}).mostrador||null,taller:dr.taller?dr.taller.periodo:(sv.periodo||{}).taller||null},
+    fromPlanilla:{m:dr.demM==null&&sv.demM==null&&d0.m!=null,o:dr.demO==null&&sv.demO==null&&d0.o!=null},
+    dirty:Object.keys(dr).length>0,usuario:sv.usuario,fecha:sv.fecha};
+}
+function pfTot(bySuc,isT){
+  if(!bySuc)return null;const p=pfUi(),ren=p.modo==='r';let t=0,dp=0,ql=0;const parts=[];
+  for(const [s,v] of Object.entries(bySuc)){const base=ren?v.r:v.u,dv=ren?v.dpR:v.dpU;if(/quick/i.test(s)){ql+=base+dv;continue}const x=base+(isT&&p.dp?dv:0);parts.push([pfSuc(s),x]);t+=x;dp+=dv}
+  return {t:r2(t),parts,dp:r2(dp),ql:r2(ql)};
+}
+const pfPct=(d,T)=>T&&T.t>0&&d!=null&&d!==''?Number(d)/T.t*100:null;
+function pfCalc(M){const tm=pfTot(M.mostrador,false),tt=pfTot(M.taller,true);return {tm,tt,pm:pfPct(M.demM,tm),pt:pfPct(M.demO,tt)}}
+function pfCard(name,chip,T,dem,pc,isT,M){
+  const unit=pfUi().modo==='r'?'renglones':'unidades',p=pfUi();
+  const miss=!T?`Falta el reporte de ventas a ${isT?'taller':'mostrador'}.`:dem==null?'Falta la cantidad pedida bajo demanda.':'';
+  return `<section class="panel pf-card"><div class="panel-h" style="margin-bottom:8px"><h3>${name}</h3><span class="pill" style="background:var(--accent-soft);color:var(--accent)">${chip}</span></div>
+  ${pc==null?`<div class="pf-big faint">–</div><div class="sub">${miss}</div>`:`<div class="pf-big">${pfP(pc).replace(' %','<small> %</small>')}</div><div class="sub" style="margin:0">pedido bajo demanda</div>
+  <div class="pf-bar" aria-hidden="true"><i style="width:${Math.min(100,pc)}%"></i></div><div class="pf-fill">Cobertura desde stock: <b>${pfP(100-pc)}</b></div>`}
+  ${T?`<dl class="pf-dl">${T.parts.map(([n,v])=>`<dt>Vendidas origen N · ${esc(n)}</dt><dd>${pfQ(v)}</dd>`).join('')}
+    ${isT&&T.dp?`<dt>${p.dp?'Incluye':'No incluye'} Dealer Prep 0km</dt><dd>${pfQ(T.dp)}</dd>`:''}
+    ${T.ql?`<dt>Quick Lane (no se cuenta)</dt><dd>${pfQ(T.ql)}</dd>`:''}
+    <dt class="tot">Total vendidas (${unit})</dt><dd class="tot">${pfQ(T.t)}</dd>
+    <dt>Pedidas bajo demanda</dt><dd>${dem==null?'–':pfQ(dem)}</dd></dl>`:''}</section>`;
+}
+function pfDrop(tipo,M){
+  const msg=pfUi().msg[M.mes+tipo]||'',f=M.archivos[tipo],per=M.periodo[tipo],dr=(pfUi().drafts[M.mes]||{})[tipo];
+  const st=msg&&msg.err?'err':f?'ok':'';
+  return `<label class="pf-drop ${st}" data-pfdrop="${tipo}">
+    <input type="file" accept=".xls,.xlsx" multiple data-pffile="${tipo}">
+    <span class="pf-t">${tipo==='mostrador'?'Ventas a mostrador':'Ventas a taller'}</span>
+    <span class="sub" style="margin:0">${tipo==='mostrador'?'Informes de repuestos › Ventas › De repuestos a mostrador › Por proveedor y familia':'Informes de repuestos › Ventas › De repuestos a taller › Por proveedor'}</span>
+    <span class="btn sm" style="justify-self:start;pointer-events:none">Elegir archivo o arrastrarlo acá</span>
+    ${f?`<span class="pf-file">${esc(f)}${per?` · ${esc(per.desde)} al ${esc(per.hasta)}`:''}${dr?' · <b>sin guardar</b>':' · guardado'}</span>`:''}
+    ${msg?`<span class="pf-msg${msg.err?' e':''}">${esc(msg.t)}</span>`:''}
+  </label>`;
+}
+function vFill(){
+  const p=pfUi(),M=pfMonth(p.mes),C=pfCalc(M);
+  const months=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0),...Object.keys(p.drafts).filter(k=>Object.keys(p.drafts[k]).length)])].sort().reverse();
+  const perWarn=M.periodo.mostrador&&M.periodo.taller&&M.periodo.mostrador.mes!==M.periodo.taller.mes;
+  const canSave=!!db&&(M.dirty||(!M.saved&&(M.demM!=null||M.demO!=null)));
+  return `<section class="panel"><div class="panel-h"><div><h2>Percent Fill</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, solo origen N. <b>% = piezas pedidas bajo demanda ÷ piezas vendidas × 100</b>, por canal: Mostrador y Oportunidad comercial (ventas a taller). La cobertura desde stock es 100 − ese %.</p></div>
+    <div class="toolbar"><div class="seg" role="group" aria-label="Contar por"><button type="button" data-act="pfModo" data-k="u" aria-pressed="${p.modo==='u'}">Unidades</button><button type="button" data-act="pfModo" data-k="r" aria-pressed="${p.modo==='r'}">Renglones</button></div>
+      <label class="pf-chk"><input type="checkbox" id="pfDp"${p.dp?' checked':''}> Dealer Prep 0km en taller</label>
+      <button class="btn" data-act="pfXls"${Object.keys(S.pfill||{}).length?'':' disabled'}>Exportar Excel</button></div></div>
+    <div class="pf-load">
+      <div class="pf-row"><label class="pf-f">Mes<input type="month" id="pfMes" value="${esc(p.mes)}"></label>
+        <span class="sub" style="margin:0;align-self:end">${M.saved?`Guardado${M.fecha?' el '+fD(M.fecha.slice(0,10)):''}${M.usuario?' por '+esc(M.usuario):''}.`:'Este mes todavía no está guardado.'} Al cargar un reporte, el mes se toma de su período.</span></div>
+      <div class="pf-zones">${pfDrop('mostrador',M)}${pfDrop('taller',M)}</div>
+      <div class="pf-row">
+        <label class="pf-f">Bajo demanda · Mostrador<input type="number" id="pfDemM" min="0" step="1" inputmode="numeric" value="${M.demM==null?'':M.demM}"><span class="faint">${M.fromPlanilla.m?'Precargado de tu planilla':'Piezas pedidas bajo demanda del canal'}</span></label>
+        <label class="pf-f">Bajo demanda · Oportunidad + Seguro<input type="number" id="pfDemO" min="0" step="1" inputmode="numeric" value="${M.demO==null?'':M.demO}"><span class="faint">${M.fromPlanilla.o?'Precargado de tu planilla':'Se compara contra las ventas a taller'}</span></label>
+        <div class="pf-f" style="align-self:end"><button class="btn pri" data-act="pfSave"${canSave?'':' disabled'}>Guardar ${esc(pfMesL(p.mes))}</button>${M.dirty?'<button class="btn" data-act="pfDiscard">Descartar cambios</button>':''}</div>
+      </div>
+      ${perWarn?`<div class="note warn">Los dos reportes son de meses distintos (${pfMesL(M.periodo.mostrador.mes)} y ${pfMesL(M.periodo.taller.mes)}). Revisalos antes de guardar.</div>`:''}
+      ${!db?'<div class="note warn">Sin conexión a la base: el cálculo se ve pero no se puede guardar.</div>':''}
+    </div></section>
+  <div class="pf-cards" id="pfCards">${pfCards(M,C)}</div>
+  <section class="panel"><div class="panel-h"><div><h3>Historial</h3><p class="sub">Tocá un mes para verlo o completarlo. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
+    <div class="chart" id="pfChart"></div>
+    <div class="legend"><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:var(--bar);display:inline-block"></i>Mostrador</span><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:#d9822b;display:inline-block"></i>Oportunidad comercial</span></div>
+    <div class="tw" style="margin-top:12px;max-height:none"><table><thead>
+      <tr><th></th><th class="n" colspan="4" style="text-align:center">Mostrador</th><th class="n" colspan="4" style="text-align:center">Oportunidad comercial (taller)</th><th></th></tr>
+      <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">%</th><th class="n">Cobertura</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">%</th><th class="n">Cobertura</th><th>Estado</th></tr></thead>
+      <tbody>${months.map(k=>{const X=pfMonth(k),R=pfCalc(X);const est=X.dirty?'<span class="pill p-bajo">sin guardar</span>':!X.saved?'<span class="pill p-sin">faltan reportes</span>':!X.mostrador||!X.taller?'<span class="pill p-bajo">faltan reportes</span>':'<span class="pill p-ok">completo</span>';
+        return `<tr class="pf-tr${k===p.mes?' sel':''}" data-act="pfOpen" data-k="${k}"><td><b>${esc(pfMesL(k))}</b></td>
+        <td class="n">${R.tm?pfQ(R.tm.t):'–'}</td><td class="n">${pfQ(X.demM)}</td><td class="n"><b>${pfP(R.pm)}</b></td><td class="n">${R.pm==null?'–':pfP(100-R.pm)}</td>
+        <td class="n">${R.tt?pfQ(R.tt.t):'–'}</td><td class="n">${pfQ(X.demO)}</td><td class="n"><b>${pfP(R.pt)}</b></td><td class="n">${R.pt==null?'–':pfP(100-R.pt)}</td><td>${est}</td></tr>`}).join('')}</tbody></table></div>
+    <div class="toolbar" style="margin-top:10px">${M.saved&&isAdmin()?(p.del===p.mes?`<span class="sub" style="margin:0">¿Borrar ${esc(pfMesL(p.mes))} del historial?</span><button class="btn" data-act="pfDelYes" style="color:var(--crit);border-color:var(--crit)">Sí, borrar</button><button class="btn" data-act="pfDelNo">No</button>`:`<button class="btn sm" data-act="pfDel">Borrar ${esc(pfMesL(p.mes))}</button>`):''}</div>
+  </section>
+  <div class="note">Se cuentan solo repuestos con <b>origen N</b> de los dos reportes; las devoluciones restan. <b>Unidades</b> suma las unidades vendidas (en taller incluye litros de aceite con decimales). <b>Renglones</b> cuenta las líneas de venta con cantidad positiva. Si el reporte trae Quick Lane, no se suma.</div>`;
+}
+function pfCards(M,C){return pfCard('Mostrador','Mostrador',C.tm,M.demM,C.pm,false,M)+pfCard('Oportunidad comercial','Taller',C.tt,M.demO,C.pt,true,M)}
+function bindPfChart(){
+  const el=$('#pfChart');if(!el)return;
+  const ms=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0)])].sort();
+  const pts=ms.map(k=>{const R=pfCalc(pfMonth(k));return {k,m:R.pm,o:R.pt}}).filter(x=>x.m!=null||x.o!=null);
+  if(!pts.length){el.innerHTML='<div class="empty" style="padding:14px">Cuando haya meses con los reportes cargados se ve la evolución.</div>';return}
+  const W=Math.max(320,Math.round(el.clientWidth||720)),H=220,pl=46,pr=24,pt=14,pb=26;
+  const max=Math.max(1,...pts.flatMap(x=>[x.m,x.o]).filter(v=>v!=null)),nice=[0.5,1,2,2.5,5,10,20].find(x=>max/x<=5)||25,top=Math.ceil(max/nice)*nice;
+  const X=i=>pts.length===1?(pl+W-pr)/2:pl+(W-pl-pr)*i/(pts.length-1),Y=v=>pt+(H-pt-pb)*(1-v/top);
+  let g='';for(let v=0;v<=top+1e-9;v+=nice)g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(v)+4}" text-anchor="end">${fN(v,1)} %</text>`;
+  g+=pts.map((x,i)=>`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${fMes(x.k)}</text>`).join('');
+  const line=(key,col,name)=>{const P=pts.map((x,i)=>[i,x[key],x.k]).filter(a=>a[1]!=null);return `<polyline fill="none" stroke="${col}" stroke-width="2" points="${P.map(a=>X(a[0])+','+Y(a[1])).join(' ')}"/>`+P.map(a=>`<circle cx="${X(a[0])}" cy="${Y(a[1])}" r="4" fill="${col}"><title>${name} ${pfMesL(a[2])}: ${pfP(a[1])}</title></circle>`).join('')};
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del % bajo demanda">${g}${line('m','var(--bar)','Mostrador')}${line('o','#d9822b','Oportunidad comercial')}</svg>`;
+}
+async function pfFiles(files,hint){
+  const p=pfUi();
+  for(const f of Array.from(files)){
+    try{
+      const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
+      const rep=pfParse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}));
+      const mes=rep.periodo?rep.periodo.mes:p.mes;
+      if(mes!==p.mes){p.mes=mes;p.del=null}
+      pfDraft(mes)[rep.tipo]={bySuc:rep.bySuc,file:f.name,periodo:rep.periodo};
+      const T=pfTot(rep.bySuc,rep.tipo==='taller');
+      let t=`${pfQ(T.t)} ${pfUi().modo==='r'?'renglones':'unidades'} origen N`;
+      if(hint&&hint!==rep.tipo)t+=` · lo puse en ${rep.tipo} porque es ese reporte`;
+      if(rep.periodo&&!rep.periodo.mismoMes)t+=' · Atención: el período abarca más de un mes';
+      if(!rep.cuadra)t+=' · Atención: la suma de líneas no coincide con el TOTAL del reporte';
+      p.msg[mes+rep.tipo]={t,err:!rep.cuadra||(rep.periodo&&!rep.periodo.mismoMes)};
+    }catch(e){p.msg[p.mes+(hint||'mostrador')]={t:(f.name+': '+(e.message||'no se pudo leer')),err:true}}
+  }
+  render();
+}
+async function pfSave(){
+  const p=pfUi(),M=pfMonth(p.mes);if(!db)return;
+  const doc={mes:M.mes,mostrador:M.mostrador,taller:M.taller,demM:M.demM==null?null:Number(M.demM),demO:M.demO==null?null:Number(M.demO),archivos:M.archivos,periodo:M.periodo,usuario:ME()?ME().email:'',fecha:new Date().toISOString()};
+  try{await db.doc('pfill/'+M.mes).set(doc);S.pfill=Object.assign({},S.pfill,{[M.mes]:doc});delete p.drafts[M.mes];
+    const C=pfCalc(pfMonth(M.mes));logAct('Guardó Percent Fill',`${pfMesL(M.mes)} · mostrador ${pfP(C.pm)} · oportunidad ${pfP(C.pt)}`,'Todas');toast(pfMesL(M.mes)+' guardado.');render()}
+  catch(e){toast('No se pudo guardar: '+(e.message||e.code))}
+}
+function pfXls(){
+  const ms=Object.keys(S.pfill||{}).sort();
+  const rows=[['Mes','Mostrador vendidas N','Mostrador bajo demanda','Mostrador %','Mostrador cobertura %','Oportunidad vendidas N','Oportunidad bajo demanda','Oportunidad %','Oportunidad cobertura %','Conteo','Dealer Prep incluido','Archivo mostrador','Archivo taller']];
+  for(const k of ms){const M=pfMonth(k),R=pfCalc(M),r=x=>x==null?'':r2(x);rows.push([pfMesL(k),R.tm?R.tm.t:'',M.demM,r(R.pm),R.pm==null?'':r2(100-R.pm),R.tt?R.tt.t:'',M.demO,r(R.pt),R.pt==null?'':r2(100-R.pt),pfUi().modo==='r'?'Renglones':'Unidades',pfUi().dp?'Sí':'No',M.archivos.mostrador,M.archivos.taller])}
+  const det=[['Mes','Canal','Sucursal','Unidades N','Renglones N','Dealer Prep unidades','Dealer Prep renglones']];
+  for(const k of ms){const M=pfMonth(k);for(const [c,b] of [['Mostrador',M.mostrador],['Taller',M.taller]])if(b)for(const [s,v] of Object.entries(b))det.push([pfMesL(k),c,pfSuc(s),v.u,v.r,v.dpU,v.dpR])}
+  exportXlsx(`Percent Fill ${stamp()}.xlsx`,[{name:'Percent Fill',rows},{name:'Detalle por sucursal',rows:det}]);
+}
+/* eventos propios de la pestaña */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act^="pf"]');if(!t||S.tab!=='fill')return;const p=pfUi(),a=t.dataset.act;
+  if(a==='pfModo'){p.modo=t.dataset.k;render()}
+  else if(a==='pfSave'){t.disabled=true;pfSave()}
+  else if(a==='pfDiscard'){delete p.drafts[p.mes];Object.keys(p.msg).filter(k=>k.startsWith(p.mes)).forEach(k=>delete p.msg[k]);render()}
+  else if(a==='pfOpen'){p.mes=t.dataset.k;p.del=null;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='pfXls')pfXls();
+  else if(a==='pfDel'){p.del=p.mes;render()}
+  else if(a==='pfDelNo'){p.del=null;render()}
+  else if(a==='pfDelYes'){const k=p.del;p.del=null;db.doc('pfill/'+k).delete().then(()=>{const o=Object.assign({},S.pfill);delete o[k];S.pfill=o;logAct('Borró Percent Fill',pfMesL(k),'Todas');toast(pfMesL(k)+' borrado.');render()}).catch(err=>toast('No se pudo borrar: '+(err.message||err.code)))}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;if(S.tab!=='fill')return;const p=pfUi();
+  if(t.dataset.pffile){const fs=[...t.files];t.value='';if(fs.length)pfFiles(fs,t.dataset.pffile)}
+  else if(t.id==='pfMes'&&/^\d{4}-\d{2}$/.test(t.value)){p.mes=t.value;p.del=null;render()}
+  else if(t.id==='pfDp'){p.dp=t.checked;render()}
+  else if(t.id==='pfDemM'||t.id==='pfDemO')render();
+});
+document.addEventListener('input',e=>{
+  const t=e.target;if(S.tab!=='fill'||(t.id!=='pfDemM'&&t.id!=='pfDemO'))return;
+  const p=pfUi(),d=pfDraft(p.mes),k=t.id==='pfDemM'?'demM':'demO';d[k]=t.value===''?null:Math.max(0,num(t.value));
+  const M=pfMonth(p.mes);$('#pfCards').innerHTML=pfCards(M,pfCalc(M));const b=document.querySelector('[data-act="pfSave"]');if(b)b.disabled=!db;
+});
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{if(S.tab!=='fill')return;const z=e.target.closest&&e.target.closest('[data-pfdrop]');if(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')){e.preventDefault();document.querySelectorAll('[data-pfdrop].over').forEach(x=>x!==z&&x.classList.remove('over'));z&&z.classList.add('over')}}));
+document.addEventListener('dragleave',e=>{const z=e.target.closest&&e.target.closest('[data-pfdrop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over')});
+document.addEventListener('drop',e=>{if(S.tab!=='fill'||!e.dataTransfer||!e.dataTransfer.files.length)return;e.preventDefault();const z=e.target.closest&&e.target.closest('[data-pfdrop]');document.querySelectorAll('[data-pfdrop].over').forEach(x=>x.classList.remove('over'));pfFiles(e.dataTransfer.files,z?z.dataset.pfdrop:null)});
+
 boot();
 </script>
 </body></html>
