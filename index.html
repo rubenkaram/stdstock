@@ -159,6 +159,7 @@ input[type=month]{font:inherit;color:var(--ink);background:var(--surface);border
 .vp-sucs{display:grid;gap:4px}.vp-suc{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pf-dropwide{display:grid;gap:4px;place-items:center;text-align:center;border:2px dashed var(--line);border-radius:10px;background:var(--surface2);padding:28px 14px;margin-top:6px}
 .pf-dropwide.over,label.btn.over{border-color:var(--accent);background:var(--accent-soft)}
+tr.pf-total td{background:var(--surface2);border-top:2px solid var(--line)}
 tr.pf-tr{cursor:pointer}tr.pf-tr:hover td{background:var(--surface2)}tr.pf-tr.sel td{background:var(--accent-soft)}
 </style>
 </head><body>
@@ -3183,7 +3184,7 @@ function vPF(){
   return `<section class="panel"><div class="panel-h"><div><h2>Percent Fill</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, solo origen N, por canal: Mostrador y Oportunidad comercial (ventas a taller). <b>Percent fill = 100 − (piezas pedidas bajo demanda ÷ piezas vendidas × 100)</b>.</p></div>
     <div class="toolbar"><div class="seg" role="group" aria-label="Contar por"><button type="button" data-act="pfModo" data-k="u" aria-pressed="${p.modo==='u'}">Unidades</button><button type="button" data-act="pfModo" data-k="r" aria-pressed="${p.modo==='r'}">Renglones</button></div>
       <label class="pf-chk"><input type="checkbox" id="pfDp"${p.dp?' checked':''}> Dealer Prep 0km en taller</label>
-      <button class="btn" data-act="pfXls"${Object.keys(S.pfill||{}).length?'':' disabled'}>Exportar Excel</button></div></div>
+</div></div>
     <div class="pf-load">
       <div class="pf-row"><label class="pf-f">Mes<input type="month" id="pfMes" value="${esc(p.mes)}"></label>
         <span class="sub" style="margin:0;align-self:end">${M.saved?`Guardado${M.fecha?' el '+fD(M.fecha.slice(0,10)):''}${M.usuario?' por '+esc(M.usuario):''}.`:'Este mes todavía no está guardado.'} Al cargar un reporte, el mes se toma de su período.</span></div>
@@ -3197,18 +3198,7 @@ function vPF(){
       ${!db?'<div class="note warn">Sin conexión a la base: el cálculo se ve pero no se puede guardar.</div>':''}
     </div></section>
   <div class="pf-cards" id="pfCards">${pfCards(M,C)}</div>
-  <section class="panel"><div class="panel-h"><div><h3>Historial</h3><p class="sub">El gráfico muestra el percent fill (cumplimiento) de cada canal. Tocá un mes para verlo o completarlo. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
-    <div class="chart" id="pfChart"></div>
-    <div class="legend"><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:var(--bar);display:inline-block"></i>Mostrador</span><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:#d9822b;display:inline-block"></i>Oportunidad comercial</span></div>
-    <div class="tw" style="margin-top:12px;max-height:none"><table><thead>
-      <tr><th></th><th class="n" colspan="4" style="text-align:center">Mostrador</th><th class="n" colspan="4" style="text-align:center">Oportunidad comercial (taller)</th><th></th></tr>
-      <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th>Estado</th></tr></thead>
-      <tbody>${months.map(k=>{const X=pfMonth(k),R=pfCalc(X);const est=X.dirty?'<span class="pill p-bajo">sin guardar</span>':!X.saved?'<span class="pill p-sin">faltan reportes</span>':!X.mostrador||!X.taller?'<span class="pill p-bajo">faltan reportes</span>':'<span class="pill p-ok">completo</span>';
-        return `<tr class="pf-tr${k===p.mes?' sel':''}" data-act="pfOpen" data-k="${k}"><td><b>${esc(pfMesL(k))}</b></td>
-        <td class="n">${R.tm?pfQ(R.tm.t):'–'}</td><td class="n">${pfQ(X.demM)}</td><td class="n">${pfP(R.pm)}</td><td class="n"><b style="color:var(--ok)">${R.pm==null?'–':pfP(100-R.pm)}</b></td>
-        <td class="n">${R.tt?pfQ(R.tt.t):'–'}</td><td class="n">${pfQ(X.demO)}</td><td class="n">${pfP(R.pt)}</td><td class="n"><b style="color:var(--ok)">${R.pt==null?'–':pfP(100-R.pt)}</b></td><td>${est}</td></tr>`}).join('')}</tbody></table></div>
-    <div class="toolbar" style="margin-top:10px">${M.saved&&isAdmin()?(p.del===p.mes?`<span class="sub" style="margin:0">¿Borrar ${esc(pfMesL(p.mes))} del historial?</span><button class="btn" data-act="pfDelYes" style="color:var(--crit);border-color:var(--crit)">Sí, borrar</button><button class="btn" data-act="pfDelNo">No</button>`:`<button class="btn sm" data-act="pfDel">Borrar ${esc(pfMesL(p.mes))}</button>`):''}</div>
-  </section>
+  ${vPfReport(M)}
   <div class="note">Se cuentan solo repuestos con <b>origen N</b> de los dos reportes; las devoluciones restan. <b>Unidades</b> suma las unidades vendidas (en taller incluye litros de aceite con decimales). <b>Renglones</b> cuenta las líneas de venta con cantidad positiva. Si el reporte trae Quick Lane, no se suma.</div>`;
 }
 function vFill(){
@@ -3220,7 +3210,7 @@ function vFill(){
 function pfCards(M,C){return pfCard('Mostrador','Mostrador',C.tm,M.demM,C.pm,false,M)+pfCard('Oportunidad comercial','Taller',C.tt,M.demO,C.pt,true,M)}
 function bindPfChart(){
   const el=$('#pfChart');if(!el)return;
-  const ms=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0)])].sort();
+  const ms=pfPeriod();
   const pts=ms.map(k=>{const R=pfCalc(pfMonth(k));return {k,m:R.pm==null?null:100-R.pm,o:R.pt==null?null:100-R.pt}}).filter(x=>x.m!=null||x.o!=null);
   if(!pts.length){el.innerHTML='<div class="empty" style="padding:14px">Cuando haya meses con los reportes cargados se ve la evolución.</div>';return}
   const W=Math.max(320,Math.round(el.clientWidth||720)),H=220,pl=46,pr=24,pt=14,pb=26;
@@ -3260,12 +3250,90 @@ async function pfSave(){
   catch(e){toast('No se pudo guardar: '+(e.message||e.code))}
 }
 function pfXls(){
-  const ms=Object.keys(S.pfill||{}).sort();
+  const ms=pfPeriod(),A=pfAgg(ms),un=pfUi().modo==='r'?'renglones':'unidades',q=x=>x==null?'':r2(x);
+  const res=[['Reporte de Percent Fill',pfPerLabel(ms)],['Conteo',un],['Dealer Prep incluido',pfUi().dp?'Sí':'No'],[],['Canal','Vendidas N','Bajo demanda','% bajo demanda','Percent fill %','Meses con datos'],['Mostrador',q(A.m.v),A.m.d,A.m.f==null?'':q(100-A.m.f),q(A.m.f),A.m.n],['Oportunidad comercial',q(A.o.v),A.o.d,A.o.f==null?'':q(100-A.o.f),q(A.o.f),A.o.n],['Total',q(A.t.v),A.t.d,A.t.f==null?'':q(100-A.t.f),q(A.t.f),'']];
   const rows=[['Mes','Mostrador vendidas N','Mostrador bajo demanda','Mostrador % bajo demanda','Mostrador percent fill %','Oportunidad vendidas N','Oportunidad bajo demanda','Oportunidad % bajo demanda','Oportunidad percent fill %','Conteo','Dealer Prep incluido','Archivo mostrador','Archivo taller']];
   for(const k of ms){const M=pfMonth(k),R=pfCalc(M),r=x=>x==null?'':r2(x);rows.push([pfMesL(k),R.tm?R.tm.t:'',M.demM,r(R.pm),R.pm==null?'':r2(100-R.pm),R.tt?R.tt.t:'',M.demO,r(R.pt),R.pt==null?'':r2(100-R.pt),pfUi().modo==='r'?'Renglones':'Unidades',pfUi().dp?'Sí':'No',M.archivos.mostrador,M.archivos.taller])}
   const det=[['Mes','Canal','Sucursal','Unidades N','Renglones N','Dealer Prep unidades','Dealer Prep renglones']];
   for(const k of ms){const M=pfMonth(k);for(const [c,b] of [['Mostrador',M.mostrador],['Taller',M.taller]])if(b)for(const [s,v] of Object.entries(b))det.push([pfMesL(k),c,pfSuc(s),v.u,v.r,v.dpU,v.dpR])}
-  exportXlsx(`Percent Fill ${stamp()}.xlsx`,[{name:'Percent Fill',rows},{name:'Detalle por sucursal',rows:det}]);
+  exportXlsx(`Percent Fill ${pfPerLabel(ms)}.xlsx`,[{name:'Resumen',rows:res},{name:'Por mes',rows},{name:'Detalle por sucursal',rows:det}]);
+}
+/* ===== Reporte de Percent Fill por período ===== */
+function pfAllMonths(){const p=pfUi();return [...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0),...Object.keys(p.drafts).filter(k=>Object.keys(p.drafts[k]).length)])].sort()}
+function pfPeriod(){const p=pfUi(),all=pfAllMonths();return all.filter(k=>(!p.rd||k>=p.rd)&&(!p.rh||k<=p.rh))}
+const pfPerLabel=ms=>!ms.length?'sin meses':ms.length===1?pfMesL(ms[0]):`${pfMesL(ms[0])} a ${pfMesL(ms[ms.length-1])}`;
+function pfAgg(ms){
+  const A={m:{v:0,d:0,n:0},o:{v:0,d:0,n:0},rows:[],suc:{}};
+  for(const k of ms){const M=pfMonth(k),R=pfCalc(M);A.rows.push({k,M,R});
+    if(R.pm!=null){A.m.v+=R.tm.t;A.m.d+=Number(M.demM);A.m.n++}
+    if(R.pt!=null){A.o.v+=R.tt.t;A.o.d+=Number(M.demO);A.o.n++}
+    for(const [c,T] of [['Mostrador',R.tm],['Oportunidad',R.tt]])if(T)for(const [s,x] of T.parts)A.suc[c+' · '+s]=(A.suc[c+' · '+s]||0)+x}
+  const f=x=>x.v>0?100-x.d/x.v*100:null;A.m.f=f(A.m);A.o.f=f(A.o);A.t={v:A.m.v+A.o.v,d:A.m.d+A.o.d};A.t.f=A.m.n&&A.o.n?f(A.t):null;
+  const fm=A.rows.filter(r=>r.R.pm!=null).map(r=>[r.k,100-r.R.pm]),fo=A.rows.filter(r=>r.R.pt!=null).map(r=>[r.k,100-r.R.pt]);
+  const ext=(L,dir)=>L.length?L.reduce((a,b)=>(dir>0?b[1]>a[1]:b[1]<a[1])?b:a):null;A.m.best=ext(fm,1);A.m.worst=ext(fm,-1);A.o.best=ext(fo,1);A.o.worst=ext(fo,-1);
+  return A;
+}
+function pfDemChart(rows){
+  const R=rows.filter(r=>r.M.demM!=null||r.M.demO!=null);if(!R.length)return '<div class="empty" style="padding:14px">Sin datos.</div>';
+  const W=560,H=220,pl=40,pr=8,pt=16,pb=26,max=Math.max(1,...R.map(r=>(+r.M.demM||0)+(+r.M.demO||0))),step=Math.pow(10,Math.floor(Math.log10(max))),nice=[1,2,2.5,5,10].map(x=>x*step).find(x=>max/x<=5)||step*10,top=Math.ceil(max/nice)*nice;
+  const bw=(W-pl-pr)/R.length,Y=x=>pt+(H-pt-pb)*(1-x/top);
+  let g='';for(let x=0;x<=top+1e-9;x+=nice)g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(x)}" y2="${Y(x)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(x)+4}" text-anchor="end">${fN(x)}</text>`;
+  const bars=R.map((r,i)=>{const x=pl+i*bw+bw*.22,w=bw*.56,a=+r.M.demM||0,b=+r.M.demO||0;
+    return `<rect x="${x}" y="${Y(a)}" width="${w}" height="${Math.max(0,Y(0)-Y(a)-1)}" fill="var(--bar)"><title>${esc(pfMesL(r.k))} · Mostrador: ${a}</title></rect><rect x="${x}" y="${Y(a+b)}" width="${w}" height="${Math.max(0,Y(a)-Y(a+b)-1)}" fill="#d9822b"><title>${esc(pfMesL(r.k))} · Oportunidad: ${b}</title></rect><text x="${x+w/2}" y="${Y(a+b)-5}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${a+b}</text><text x="${x+w/2}" y="${H-8}" text-anchor="middle">${fMes(r.k)}</text>`}).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Piezas pedidas bajo demanda por mes">${g}${bars}</svg>`;
+}
+const pfLegend=()=>`<div class="legend"><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:var(--bar);display:inline-block"></i>Mostrador</span><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:#d9822b;display:inline-block"></i>Oportunidad comercial</span></div>`;
+function vPfReport(M){
+  const p=pfUi(),all=pfAllMonths(),ms=pfPeriod(),A=pfAgg(ms),unit=p.modo==='r'?'renglones':'unidades';
+  const vpN=vpAll().filter(i=>ms.includes(i.f.slice(0,7))).length;
+  const opt=(sel)=>all.map(k=>`<option value="${k}"${k===sel?' selected':''}>${esc(pfMesL(k))}</option>`).join('');
+  const tile=(l,x,col)=>`<div class="tile"><div class="l">${l}</div><div class="v" style="color:${x.f==null?'var(--muted)':'var(--ok)'}">${x.f==null?'–':pfP(x.f)}</div><div class="n">${x.f==null?'faltan datos del período':`${pfQ(x.v)} ${unit} · ${pfQ(x.d)} bajo demanda`}</div>${x.best&&x.n>1?`<div class="n">mejor ${fMes(x.best[0])} ${pfP(x.best[1])} · peor ${fMes(x.worst[0])} ${pfP(x.worst[1])}</div>`:''}</div>`;
+  const done=A.rows.filter(r=>r.R.pm!=null&&r.R.pt!=null).length;
+  return `<section class="panel" id="pfReport"><div class="panel-h"><div><h2>Reporte de Percent Fill</h2><p class="sub">${esc(pfPerLabel(ms))} · La Rioja + Catamarca · origen N · contado en ${unit}${p.dp?'':' · sin Dealer Prep'}. El percent fill del período se calcula con el total de piezas vendidas y pedidas bajo demanda de esos meses.</p></div>
+    <div class="toolbar"><label class="pf-chk">Desde <select id="pfRd"><option value="">el primero</option>${opt(p.rd)}</select></label><label class="pf-chk">Hasta <select id="pfRh"><option value="">el último</option>${opt(p.rh)}</select></label>
+      <button class="btn" data-act="pfXls"${ms.length?'':' disabled'}>Excel</button><button class="btn" data-act="pfPrint"${ms.length?'':' disabled'}>Imprimir / PDF</button></div></div>
+    <div class="tiles">${tile('Percent fill · Mostrador',A.m)}${tile('Percent fill · Oportunidad',A.o)}${tile('Percent fill · Total',A.t)}
+      <div class="tile"><div class="l">Meses completos</div><div class="v">${done} / ${ms.length}</div><div class="n">${done<ms.length?'faltan reportes o cantidades':'todos con datos'}</div></div>
+      <div class="tile"><div class="l">Ventas perdidas</div><div class="v">${fN(vpN)}</div><div class="n"><button class="btn sm" data-act="pfView" data-k="vp" style="margin-top:2px">Ver ventas perdidas</button></div></div></div>
+  </section>
+  <div class="vp-grid">
+    <section class="panel"><h3 style="margin-bottom:8px">Percent fill por mes</h3><div class="chart" id="pfChart"></div>${pfLegend()}</section>
+    <section class="panel"><h3 style="margin-bottom:8px">Piezas pedidas bajo demanda por mes</h3><div class="chart">${pfDemChart(A.rows)}</div>${pfLegend()}</section>
+    <section class="panel vp-wide"><h3 style="margin-bottom:8px">Piezas vendidas origen N por canal y sucursal (${unit}, total del período)</h3><div class="chart">${vpHBars(Object.entries(A.suc).sort((a,b)=>b[1]-a[1]),{label:'Vendidas por canal y sucursal',W:1100,pl:260,lab:40})}</div></section>
+  </div>
+  <section class="panel"><div class="panel-h"><div><h3>Detalle por mes</h3><p class="sub">Tocá un mes para verlo o completarlo arriba. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
+    <div class="tw" style="max-height:none"><table><thead>
+      <tr><th></th><th class="n" colspan="4" style="text-align:center">Mostrador</th><th class="n" colspan="4" style="text-align:center">Oportunidad comercial (taller)</th><th></th></tr>
+      <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th>Estado</th></tr></thead>
+      <tbody>${A.rows.slice().reverse().map(({k,M:X,R})=>{const est=X.dirty?'<span class="pill p-bajo">sin guardar</span>':!X.saved?'<span class="pill p-sin">faltan reportes</span>':!X.mostrador||!X.taller?'<span class="pill p-bajo">faltan reportes</span>':'<span class="pill p-ok">completo</span>';
+        return `<tr class="pf-tr${k===p.mes?' sel':''}" data-act="pfOpen" data-k="${k}"><td><b>${esc(pfMesL(k))}</b></td>
+        <td class="n">${R.tm?pfQ(R.tm.t):'–'}</td><td class="n">${pfQ(X.demM)}</td><td class="n">${pfP(R.pm)}</td><td class="n"><b style="color:var(--ok)">${R.pm==null?'–':pfP(100-R.pm)}</b></td>
+        <td class="n">${R.tt?pfQ(R.tt.t):'–'}</td><td class="n">${pfQ(X.demO)}</td><td class="n">${pfP(R.pt)}</td><td class="n"><b style="color:var(--ok)">${R.pt==null?'–':pfP(100-R.pt)}</b></td><td>${est}</td></tr>`}).join('')}
+      ${ms.length>1?`<tr class="pf-total"><td><b>Total período</b></td><td class="n">${pfQ(r2(A.m.v))}</td><td class="n">${pfQ(A.m.d)}</td><td class="n">${A.m.f==null?'–':pfP(100-A.m.f)}</td><td class="n"><b style="color:var(--ok)">${pfP(A.m.f)}</b></td><td class="n">${pfQ(r2(A.o.v))}</td><td class="n">${pfQ(A.o.d)}</td><td class="n">${A.o.f==null?'–':pfP(100-A.o.f)}</td><td class="n"><b style="color:var(--ok)">${pfP(A.o.f)}</b></td><td class="faint">solo meses con datos</td></tr>`:''}</tbody></table></div>
+    <div class="toolbar" style="margin-top:10px">${M.saved&&isAdmin()?(p.del===p.mes?`<span class="sub" style="margin:0">¿Borrar ${esc(pfMesL(p.mes))} del historial?</span><button class="btn" data-act="pfDelYes" style="color:var(--crit);border-color:var(--crit)">Sí, borrar</button><button class="btn" data-act="pfDelNo">No</button>`:`<button class="btn sm" data-act="pfDel">Borrar ${esc(pfMesL(p.mes))}</button>`):''}</div>
+  </section>`;
+}
+/* impresión: abre una ventana con el contenido y los colores de la app, lista para imprimir o guardar como PDF */
+function pfPrintHtml(title,sub,html){
+  const w=window.open('','_blank');if(!w){toast('El navegador bloqueó la ventana: permití ventanas emergentes.');return}
+  const css=`:root{--bg:#fff;--surface:#fff;--surface2:#f6f8fa;--ink:#15202c;--muted:#5a6878;--faint:#8a96a4;--line:#d9dee5;--accent:#1c4d9c;--accent-soft:#e3ebf8;--ok:#2c7a4b;--ok-soft:#e2f2e8;--warn:#9a6212;--warn-soft:#fbefd9;--crit:#b3261e;--crit-soft:#fbe4e2;--bar:#3d6fbf}
+  body{font:12px "IBM Plex Sans",system-ui,sans-serif;color:var(--ink);margin:18px}h1{font-size:18px;margin:0}h2{font-size:15px;margin:0}h3{font-size:13px;margin:0 0 6px}.sub,p.s{color:var(--muted);margin:2px 0 12px}
+  .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}.tile{padding:8px 10px;border-right:1px solid var(--line)}.tile .l{font-size:10px;text-transform:uppercase;color:var(--muted)}.tile .v{font-size:18px;font-weight:600}.tile .n{font-size:10.5px;color:var(--faint)}
+  .vp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.vp-wide{grid-column:1/-1}.panel{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px;break-inside:avoid}.panel-h{margin-bottom:6px}
+  svg{width:100%;height:auto}svg text{fill:var(--muted);font:11px system-ui,sans-serif}.legend{display:flex;gap:14px;font-size:11px;color:var(--muted)}.legend i{display:inline-block}
+  table{border-collapse:collapse;width:100%;font-size:10.5px}th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}th{background:var(--surface2)}td.n,th.n{text-align:right}.code{font-family:monospace}.pill{font-size:10px}
+  .toolbar,button,select,.btn,input{display:none!important}@media print{body{margin:8mm}}`;
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><h1>${esc(title)}</h1><p class="s">${esc(sub)}</p>${html}<p class="s">Karam Automotores · Estándar Stock · emitido ${new Date().toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</p><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.close();
+}
+function pfPrint(){
+  const ms=pfPeriod(),parts=[...document.querySelectorAll('#main #pfReport .tiles, #main .vp-grid, #main #pfReport ~ section.panel .tw')].map(e=>e.outerHTML).join('');
+  pfPrintHtml('Percent Fill · '+pfPerLabel(ms),`La Rioja + Catamarca · origen N · contado en ${pfUi().modo==='r'?'renglones':'unidades'}${pfUi().dp?'':' · sin Dealer Prep'}`,parts);
+}
+function vpPrint(){
+  const v=vpUi(),ms=[...new Set(vpFiltered().map(i=>i.f.slice(0,7)))].sort();
+  const parts=[...document.querySelectorAll('#main > .tiles, #main #vpRep, #main .vp-grid')].map(e=>e.outerHTML).join('');
+  pfPrintHtml('Ventas perdidas · '+pfPerLabel(ms),[v.suc||'Todas las sucursales',v.usr||'todos los vendedores',v.orig?'origen '+v.orig:'todos los orígenes',v.met==='u'?'en unidades':'en ventas'].join(' · '),parts);
 }
 /* ===== Ventas perdidas (dentro de la pestaña Percent Fill) ===== */
 /* Informe Autologica: Informes de repuestos > Gerenciales > Ventas perdidas > Por usuario */
@@ -3342,7 +3410,7 @@ function vVP(){
   const opt=(arr,sel,fmt)=>arr.map(x=>`<option value="${esc(x)}"${x===sel?' selected':''}>${esc(fmt?fmt(x):x)}</option>`).join('');
   return `${vpPending()}
   <section class="panel"><div class="panel-h"><div><h2>Ventas perdidas</h2><p class="sub">Pedidos de clientes que no se pudieron atender. Subí el informe de Autologica <i>Informes de repuestos › Gerenciales › Ventas perdidas › Por usuario</i> (podés traer varios meses juntos: cada carga reemplaza los meses que trae). Arrastralo acá o elegilo.</p></div>
-    <div class="toolbar"><label class="btn file pri" data-pfdrop="vp">Cargar informe<input type="file" accept=".xls,.xlsx" data-pffile="vp"></label><button class="btn" data-act="pfVpXls"${F.length?'':' disabled'}>Exportar Excel</button></div></div>
+    <div class="toolbar"><label class="btn file pri" data-pfdrop="vp">Cargar informe<input type="file" accept=".xls,.xlsx" data-pffile="vp"></label><button class="btn" data-act="pfVpXls"${F.length?'':' disabled'}>Excel</button><button class="btn" data-act="pfVpPrint"${F.length?'':' disabled'}>Imprimir / PDF</button></div></div>
     ${all.length?`<div class="toolbar vp-filt">
       <label>Desde <select id="vpDesde"><option value="">inicio</option>${opt(meses,v.desde,fMes)}</select></label>
       <label>Hasta <select id="vpHasta"><option value="">hoy</option>${opt(meses,v.hasta,fMes)}</select></label>
@@ -3361,7 +3429,7 @@ function vVP(){
     <div class="tile"><div class="l">Se repiten</div><div class="v" style="color:${Rp.length?'var(--crit)':'var(--ok)'}">${fN(R.length)}</div><div class="n">${Rp.length?`${Rp.length} fuera del estándar`:'todas en el estándar'}</div></div>
     <div class="tile"><div class="l">Vendedores</div><div class="v">${fN(new Set(F.map(i=>i.u)).size)}</div><div class="n">con ventas perdidas</div></div>
   </div>
-  <section class="panel${Rp.length?' vp-alert':''}"><div class="panel-h"><div><h3>${Rp.length?`⚠ ${Rp.length} pieza${Rp.length>1?'s':''} que se repite${Rp.length>1?'n':''} y no está${Rp.length>1?'n':''} en el estándar`:'Piezas que se repiten'}</h3><p class="sub">Piezas perdidas ${v.min} o más veces en el período elegido. Son candidatas a sumar al estándar stock de la sucursal donde se perdieron. Stock y venta mensual son los últimos cargados de cada sucursal.</p></div>
+  <section class="panel${Rp.length?' vp-alert':''}" id="vpRep"><div class="panel-h"><div><h3>${Rp.length?`⚠ ${Rp.length} pieza${Rp.length>1?'s':''} que se repite${Rp.length>1?'n':''} y no está${Rp.length>1?'n':''} en el estándar`:'Piezas que se repiten'}</h3><p class="sub">Piezas perdidas ${v.min} o más veces en el período elegido. Son candidatas a sumar al estándar stock de la sucursal donde se perdieron. Stock y venta mensual son los últimos cargados de cada sucursal.</p></div>
     <label class="pf-chk">Repetida desde <select id="vpMin">${[2,3,4,5].map(n=>`<option value="${n}"${n===v.min?' selected':''}>${n} veces</option>`).join('')}</select></label></div>
     ${R.length?`<div class="tw" style="max-height:none"><table><thead><tr><th>Código</th><th>Descripción</th><th class="n">Veces</th><th class="n">Unidades</th><th>Meses</th><th>Vendedores</th><th>Última</th><th>Sucursal · estándar</th></tr></thead><tbody>
     ${R.map(x=>`<tr><td class="code">${esc(x.c)}</td><td class="desc" title="${esc(x.d)}">${esc(x.d)}</td><td class="n"><b>${x.n}</b></td><td class="n">${fN(x.q)}</td><td>${[...x.meses].sort().map(fMes).join(', ')}</td><td class="desc">${esc([...x.usrs].join(', '))}</td><td>${fD(x.ult)}</td>
@@ -3408,6 +3476,8 @@ document.addEventListener('click',e=>{
   else if(a==='pfVpCancel'){S.vpPend=null;render()}
   else if(a==='pfVpMet'){vpUi().met=t.dataset.k;render()}
   else if(a==='pfVpXls')vpXls();
+  else if(a==='pfPrint')pfPrint();
+  else if(a==='pfVpPrint')vpPrint();
   else if(a==='pfVpStd'){const c=t.dataset.c,sc=t.dataset.s;S.stdBy[sc]=[...new Set([...(S.stdBy[sc]||[]),c])];saveStd();if(sc===stdKey())recompute();logAct('Agregó al estándar',c+' (por ventas perdidas)',sc);toast(`${c} agregada al estándar de ${sc}.`);render()}
   else if(a==='pfSave'){t.disabled=true;pfSave()}
   else if(a==='pfDiscard'){delete p.drafts[p.mes];Object.keys(p.msg).filter(k=>k.startsWith(p.mes)).forEach(k=>delete p.msg[k]);render()}
@@ -3422,6 +3492,7 @@ document.addEventListener('change',e=>{
   if(t.dataset.pffile){const fs=[...t.files];t.value='';if(fs.length)pfFiles(fs,t.dataset.pffile==='vp'?null:t.dataset.pffile)}
   else if(['vpDesde','vpHasta','vpSuc','vpUsr','vpOrig'].includes(t.id)){vpUi()[t.id.slice(2).toLowerCase()]=t.value;render()}
   else if(t.id==='vpMin'){vpUi().min=+t.value;render()}
+  else if(t.id==='pfRd'||t.id==='pfRh'){p[t.id==='pfRd'?'rd':'rh']=t.value;render()}
   else if(t.id==='pfMes'&&/^\d{4}-\d{2}$/.test(t.value)){p.mes=t.value;p.del=null;render()}
   else if(t.id==='pfDp'){p.dp=t.checked;render()}
   else if(t.id==='pfDemM'||t.id==='pfDemO')render();
