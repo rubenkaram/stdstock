@@ -142,13 +142,23 @@ input[type=month]{font:inherit;color:var(--ink);background:var(--surface);border
 .pf-chk{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);cursor:pointer}
 .pf-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}
 .pf-card{display:grid;gap:8px;align-content:start}
-.pf-big{font:600 40px/1 var(--f-display);color:var(--warn);font-variant-numeric:tabular-nums}
+.pf-big{font:600 40px/1 var(--f-display);color:var(--ok);font-variant-numeric:tabular-nums}
 .pf-big small{font-size:20px}
-.pf-bar{height:8px;border-radius:2px;background:var(--accent-soft);overflow:hidden}.pf-bar i{display:block;height:100%;background:var(--warn)}
-.pf-fill{font-size:13px}.pf-fill b{color:var(--ok);font-variant-numeric:tabular-nums}
+.pf-bar{height:8px;border-radius:2px;background:var(--warn);overflow:hidden}.pf-bar i{display:block;height:100%;background:var(--ok)}
+.pf-fill{font-size:13px}.pf-fill b{color:var(--warn);font-variant-numeric:tabular-nums}
 .pf-dl{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:4px 0 0;font-size:12.5px}
 .pf-dl dt{color:var(--muted)}.pf-dl dd{margin:0;text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .pf-dl .tot{border-top:1px solid var(--line);padding-top:3px;color:var(--ink);font-weight:600}
+.pf-views{justify-content:space-between;margin-bottom:-4px}
+.vp-badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--crit);color:#fff;font-size:11px;font-weight:700;margin-left:4px}
+.vp-banner{appearance:none;border:1px solid var(--crit);background:var(--crit-soft);color:var(--ink);border-radius:7px;padding:6px 12px;font:600 12.5px var(--f-body);cursor:pointer}
+.vp-alert{border-color:var(--crit)}.vp-alert h3{color:var(--crit)}
+.vp-filt label{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.vp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.vp-grid .vp-wide{grid-column:1/-1}
+.vp-sucs{display:grid;gap:4px}.vp-suc{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pf-dropwide{display:grid;gap:4px;place-items:center;text-align:center;border:2px dashed var(--line);border-radius:10px;background:var(--surface2);padding:28px 14px;margin-top:6px}
+.pf-dropwide.over,label.btn.over{border-color:var(--accent);background:var(--accent-soft)}
 tr.pf-tr{cursor:pointer}tr.pf-tr:hover td{background:var(--surface2)}tr.pf-tr.sel td{background:var(--accent-soft)}
 </style>
 </head><body>
@@ -1903,6 +1913,7 @@ async function boot(){
     S.D.oq=oq;S.D.ddp=ddp;S.base=base;
     await useSuc(S.P.sucursal);
     if(ME()&&ME().admin)db.collection('actividad').onSnapshot(snap=>{S.act=snap.docs.map(x=>x.data()).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));if(!S.loading&&S.tab==='actividad')render()},()=>{});
+    db.collection('vperd').onSnapshot(snap=>{const o={};snap.docs.forEach(x=>{o[x.id]=x.data()});S.vperd=o;const ae=document.activeElement;if(!S.loading&&S.tab==='fill'&&!(ae&&ae.closest&&ae.closest('#main')&&ae.matches('input,select')))render()},()=>{});
     db.collection('pfill').onSnapshot(snap=>{const o={};snap.docs.forEach(x=>{o[x.id]=x.data()});S.pfill=o;const ae=document.activeElement;if(!S.loading&&S.tab==='fill'&&!(ae&&ae.closest&&ae.closest('#main')&&ae.matches('input')))render()},()=>{});
     db.collection('depositos').onSnapshot(snap=>{S.depos=snap.docs.map(x=>x.data());if(!S.loading&&S.tab==='depositos')render()},()=>{});
     db.collection('controles').onSnapshot(snap=>{S.ctrls=snap.docs.map(x=>Object.assign({id:x.id},x.data()));const a=document.activeElement;if(!S.loading&&S.tab==='control'&&!(a&&a.closest&&a.closest('#main')&&a.matches('input,select,textarea')))render()},()=>{});
@@ -3119,7 +3130,7 @@ function pfParse(rows){
   const sum=Object.values(orig).reduce((a,b)=>a+b,0);
   return {tipo,periodo,bySuc,cuadra:total===null||Math.abs(sum-total)<0.01,total};
 }
-function pfUi(){const u=S.ui;if(!u.pf){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);u.pf={mes:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,modo:'u',dp:true,drafts:{},msg:{}}}return u.pf}
+function pfUi(){const u=S.ui;if(!u.pf){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);u.pf={view:'pf',mes:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,modo:'u',dp:true,drafts:{},msg:{}}}return u.pf}
 function pfDraft(mes){const p=pfUi();return p.drafts[mes]||(p.drafts[mes]={})}
 /* datos efectivos del mes: lo cargado sin guardar pisa lo guardado */
 function pfMonth(mes){
@@ -3144,8 +3155,8 @@ function pfCard(name,chip,T,dem,pc,isT,M){
   const unit=pfUi().modo==='r'?'renglones':'unidades',p=pfUi();
   const miss=!T?`Falta el reporte de ventas a ${isT?'taller':'mostrador'}.`:dem==null?'Falta la cantidad pedida bajo demanda.':'';
   return `<section class="panel pf-card"><div class="panel-h" style="margin-bottom:8px"><h3>${name}</h3><span class="pill" style="background:var(--accent-soft);color:var(--accent)">${chip}</span></div>
-  ${pc==null?`<div class="pf-big faint">–</div><div class="sub">${miss}</div>`:`<div class="pf-big">${pfP(pc).replace(' %','<small> %</small>')}</div><div class="sub" style="margin:0">pedido bajo demanda</div>
-  <div class="pf-bar" aria-hidden="true"><i style="width:${Math.min(100,pc)}%"></i></div><div class="pf-fill">Cobertura desde stock: <b>${pfP(100-pc)}</b></div>`}
+  ${pc==null?`<div class="pf-big faint">–</div><div class="sub">${miss}</div>`:`<div class="pf-big">${pfP(100-pc).replace(' %','<small> %</small>')}</div><div class="sub" style="margin:0">percent fill · entregado desde stock</div>
+  <div class="pf-bar" aria-hidden="true"><i style="width:${Math.max(0,100-pc)}%"></i></div><div class="pf-fill">Pedido bajo demanda: <b>${pfP(pc)}</b></div>`}
   ${T?`<dl class="pf-dl">${T.parts.map(([n,v])=>`<dt>Vendidas origen N · ${esc(n)}</dt><dd>${pfQ(v)}</dd>`).join('')}
     ${isT&&T.dp?`<dt>${p.dp?'Incluye':'No incluye'} Dealer Prep 0km</dt><dd>${pfQ(T.dp)}</dd>`:''}
     ${T.ql?`<dt>Quick Lane (no se cuenta)</dt><dd>${pfQ(T.ql)}</dd>`:''}
@@ -3164,12 +3175,12 @@ function pfDrop(tipo,M){
     ${msg?`<span class="pf-msg${msg.err?' e':''}">${esc(msg.t)}</span>`:''}
   </label>`;
 }
-function vFill(){
+function vPF(){
   const p=pfUi(),M=pfMonth(p.mes),C=pfCalc(M);
   const months=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0),...Object.keys(p.drafts).filter(k=>Object.keys(p.drafts[k]).length)])].sort().reverse();
   const perWarn=M.periodo.mostrador&&M.periodo.taller&&M.periodo.mostrador.mes!==M.periodo.taller.mes;
   const canSave=!!db&&(M.dirty||(!M.saved&&(M.demM!=null||M.demO!=null)));
-  return `<section class="panel"><div class="panel-h"><div><h2>Percent Fill</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, solo origen N. <b>% = piezas pedidas bajo demanda ÷ piezas vendidas × 100</b>, por canal: Mostrador y Oportunidad comercial (ventas a taller). La cobertura desde stock es 100 − ese %.</p></div>
+  return `<section class="panel"><div class="panel-h"><div><h2>Percent Fill</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, solo origen N, por canal: Mostrador y Oportunidad comercial (ventas a taller). <b>Percent fill = 100 − (piezas pedidas bajo demanda ÷ piezas vendidas × 100)</b>.</p></div>
     <div class="toolbar"><div class="seg" role="group" aria-label="Contar por"><button type="button" data-act="pfModo" data-k="u" aria-pressed="${p.modo==='u'}">Unidades</button><button type="button" data-act="pfModo" data-k="r" aria-pressed="${p.modo==='r'}">Renglones</button></div>
       <label class="pf-chk"><input type="checkbox" id="pfDp"${p.dp?' checked':''}> Dealer Prep 0km en taller</label>
       <button class="btn" data-act="pfXls"${Object.keys(S.pfill||{}).length?'':' disabled'}>Exportar Excel</button></div></div>
@@ -3186,40 +3197,48 @@ function vFill(){
       ${!db?'<div class="note warn">Sin conexión a la base: el cálculo se ve pero no se puede guardar.</div>':''}
     </div></section>
   <div class="pf-cards" id="pfCards">${pfCards(M,C)}</div>
-  <section class="panel"><div class="panel-h"><div><h3>Historial</h3><p class="sub">Tocá un mes para verlo o completarlo. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
+  <section class="panel"><div class="panel-h"><div><h3>Historial</h3><p class="sub">El gráfico muestra el percent fill (cumplimiento) de cada canal. Tocá un mes para verlo o completarlo. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
     <div class="chart" id="pfChart"></div>
     <div class="legend"><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:var(--bar);display:inline-block"></i>Mostrador</span><span style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:3px;background:#d9822b;display:inline-block"></i>Oportunidad comercial</span></div>
     <div class="tw" style="margin-top:12px;max-height:none"><table><thead>
       <tr><th></th><th class="n" colspan="4" style="text-align:center">Mostrador</th><th class="n" colspan="4" style="text-align:center">Oportunidad comercial (taller)</th><th></th></tr>
-      <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">%</th><th class="n">Cobertura</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">%</th><th class="n">Cobertura</th><th>Estado</th></tr></thead>
+      <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th>Estado</th></tr></thead>
       <tbody>${months.map(k=>{const X=pfMonth(k),R=pfCalc(X);const est=X.dirty?'<span class="pill p-bajo">sin guardar</span>':!X.saved?'<span class="pill p-sin">faltan reportes</span>':!X.mostrador||!X.taller?'<span class="pill p-bajo">faltan reportes</span>':'<span class="pill p-ok">completo</span>';
         return `<tr class="pf-tr${k===p.mes?' sel':''}" data-act="pfOpen" data-k="${k}"><td><b>${esc(pfMesL(k))}</b></td>
-        <td class="n">${R.tm?pfQ(R.tm.t):'–'}</td><td class="n">${pfQ(X.demM)}</td><td class="n"><b>${pfP(R.pm)}</b></td><td class="n">${R.pm==null?'–':pfP(100-R.pm)}</td>
-        <td class="n">${R.tt?pfQ(R.tt.t):'–'}</td><td class="n">${pfQ(X.demO)}</td><td class="n"><b>${pfP(R.pt)}</b></td><td class="n">${R.pt==null?'–':pfP(100-R.pt)}</td><td>${est}</td></tr>`}).join('')}</tbody></table></div>
+        <td class="n">${R.tm?pfQ(R.tm.t):'–'}</td><td class="n">${pfQ(X.demM)}</td><td class="n">${pfP(R.pm)}</td><td class="n"><b style="color:var(--ok)">${R.pm==null?'–':pfP(100-R.pm)}</b></td>
+        <td class="n">${R.tt?pfQ(R.tt.t):'–'}</td><td class="n">${pfQ(X.demO)}</td><td class="n">${pfP(R.pt)}</td><td class="n"><b style="color:var(--ok)">${R.pt==null?'–':pfP(100-R.pt)}</b></td><td>${est}</td></tr>`}).join('')}</tbody></table></div>
     <div class="toolbar" style="margin-top:10px">${M.saved&&isAdmin()?(p.del===p.mes?`<span class="sub" style="margin:0">¿Borrar ${esc(pfMesL(p.mes))} del historial?</span><button class="btn" data-act="pfDelYes" style="color:var(--crit);border-color:var(--crit)">Sí, borrar</button><button class="btn" data-act="pfDelNo">No</button>`:`<button class="btn sm" data-act="pfDel">Borrar ${esc(pfMesL(p.mes))}</button>`):''}</div>
   </section>
   <div class="note">Se cuentan solo repuestos con <b>origen N</b> de los dos reportes; las devoluciones restan. <b>Unidades</b> suma las unidades vendidas (en taller incluye litros de aceite con decimales). <b>Renglones</b> cuenta las líneas de venta con cantidad positiva. Si el reporte trae Quick Lane, no se suma.</div>`;
+}
+function vFill(){
+  const p=pfUi(),n=Object.keys(S.vperd||{}).length?vpAlertCount():0;
+  return `<div class="toolbar pf-views"><div class="seg" role="tablist" aria-label="Vista"><button type="button" data-act="pfView" data-k="pf" aria-pressed="${p.view!=='vp'}">Percent Fill</button><button type="button" data-act="pfView" data-k="vp" aria-pressed="${p.view==='vp'}">Ventas perdidas${n?` <span class="vp-badge">${n}</span>`:''}</button></div>
+    ${n&&p.view!=='vp'?`<button class="vp-banner" data-act="pfView" data-k="vp">⚠ ${n} pieza${n>1?'s':''} se repite${n>1?'n':''} en ventas perdidas y no está${n>1?'n':''} en el estándar. Ver</button>`:''}</div>
+  ${p.view==='vp'?vVP():vPF()}`;
 }
 function pfCards(M,C){return pfCard('Mostrador','Mostrador',C.tm,M.demM,C.pm,false,M)+pfCard('Oportunidad comercial','Taller',C.tt,M.demO,C.pt,true,M)}
 function bindPfChart(){
   const el=$('#pfChart');if(!el)return;
   const ms=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0)])].sort();
-  const pts=ms.map(k=>{const R=pfCalc(pfMonth(k));return {k,m:R.pm,o:R.pt}}).filter(x=>x.m!=null||x.o!=null);
+  const pts=ms.map(k=>{const R=pfCalc(pfMonth(k));return {k,m:R.pm==null?null:100-R.pm,o:R.pt==null?null:100-R.pt}}).filter(x=>x.m!=null||x.o!=null);
   if(!pts.length){el.innerHTML='<div class="empty" style="padding:14px">Cuando haya meses con los reportes cargados se ve la evolución.</div>';return}
   const W=Math.max(320,Math.round(el.clientWidth||720)),H=220,pl=46,pr=24,pt=14,pb=26;
-  const max=Math.max(1,...pts.flatMap(x=>[x.m,x.o]).filter(v=>v!=null)),nice=[0.5,1,2,2.5,5,10,20].find(x=>max/x<=5)||25,top=Math.ceil(max/nice)*nice;
-  const X=i=>pts.length===1?(pl+W-pr)/2:pl+(W-pl-pr)*i/(pts.length-1),Y=v=>pt+(H-pt-pb)*(1-v/top);
-  let g='';for(let v=0;v<=top+1e-9;v+=nice)g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(v)+4}" text-anchor="end">${fN(v,1)} %</text>`;
+  const mn=Math.min(...pts.flatMap(x=>[x.m,x.o]).filter(v=>v!=null)),nice=[0.5,1,2,2.5,5,10,20].find(x=>(100-mn)/x<=4)||25,lo=Math.max(0,Math.floor(mn/nice)*nice-nice),top=100;
+  const X=i=>pts.length===1?(pl+W-pr)/2:pl+(W-pl-pr)*i/(pts.length-1),Y=v=>pt+(H-pt-pb)*(1-(v-lo)/(top-lo));
+  let g='';for(let v=lo;v<=top+1e-9;v+=nice)g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(v)+4}" text-anchor="end">${fN(v,1)} %</text>`;
   g+=pts.map((x,i)=>`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${fMes(x.k)}</text>`).join('');
   const line=(key,col,name)=>{const P=pts.map((x,i)=>[i,x[key],x.k]).filter(a=>a[1]!=null);return `<polyline fill="none" stroke="${col}" stroke-width="2" points="${P.map(a=>X(a[0])+','+Y(a[1])).join(' ')}"/>`+P.map(a=>`<circle cx="${X(a[0])}" cy="${Y(a[1])}" r="4" fill="${col}"><title>${name} ${pfMesL(a[2])}: ${pfP(a[1])}</title></circle>`).join('')};
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del % bajo demanda">${g}${line('m','var(--bar)','Mostrador')}${line('o','#d9822b','Oportunidad comercial')}</svg>`;
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del percent fill">${g}${line('m','var(--bar)','Mostrador')}${line('o','#d9822b','Oportunidad comercial')}</svg>`;
 }
 async function pfFiles(files,hint){
   const p=pfUi();
   for(const f of Array.from(files)){
     try{
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
-      const rep=pfParse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}));
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      if(/ventas perdidas/i.test(String(rows[0]&&rows[0][0]))){await vpLoadFile(f);continue}
+      const rep=pfParse(rows);
       const mes=rep.periodo?rep.periodo.mes:p.mes;
       if(mes!==p.mes){p.mes=mes;p.del=null}
       pfDraft(mes)[rep.tipo]={bySuc:rep.bySuc,file:f.name,periodo:rep.periodo};
@@ -3242,16 +3261,154 @@ async function pfSave(){
 }
 function pfXls(){
   const ms=Object.keys(S.pfill||{}).sort();
-  const rows=[['Mes','Mostrador vendidas N','Mostrador bajo demanda','Mostrador %','Mostrador cobertura %','Oportunidad vendidas N','Oportunidad bajo demanda','Oportunidad %','Oportunidad cobertura %','Conteo','Dealer Prep incluido','Archivo mostrador','Archivo taller']];
+  const rows=[['Mes','Mostrador vendidas N','Mostrador bajo demanda','Mostrador % bajo demanda','Mostrador percent fill %','Oportunidad vendidas N','Oportunidad bajo demanda','Oportunidad % bajo demanda','Oportunidad percent fill %','Conteo','Dealer Prep incluido','Archivo mostrador','Archivo taller']];
   for(const k of ms){const M=pfMonth(k),R=pfCalc(M),r=x=>x==null?'':r2(x);rows.push([pfMesL(k),R.tm?R.tm.t:'',M.demM,r(R.pm),R.pm==null?'':r2(100-R.pm),R.tt?R.tt.t:'',M.demO,r(R.pt),R.pt==null?'':r2(100-R.pt),pfUi().modo==='r'?'Renglones':'Unidades',pfUi().dp?'Sí':'No',M.archivos.mostrador,M.archivos.taller])}
   const det=[['Mes','Canal','Sucursal','Unidades N','Renglones N','Dealer Prep unidades','Dealer Prep renglones']];
   for(const k of ms){const M=pfMonth(k);for(const [c,b] of [['Mostrador',M.mostrador],['Taller',M.taller]])if(b)for(const [s,v] of Object.entries(b))det.push([pfMesL(k),c,pfSuc(s),v.u,v.r,v.dpU,v.dpR])}
   exportXlsx(`Percent Fill ${stamp()}.xlsx`,[{name:'Percent Fill',rows},{name:'Detalle por sucursal',rows:det}]);
 }
+/* ===== Ventas perdidas (dentro de la pestaña Percent Fill) ===== */
+/* Informe Autologica: Informes de repuestos > Gerenciales > Ventas perdidas > Por usuario */
+const VPC=['var(--bar)','#d9822b','#2c9a6a','#8a63d2','#c2410c'];
+const vpSucApp=n=>{n=String(n||'').trim();return S.sucMap[n]||(/quick/i.test(n)?(S.sucs.find(x=>/quick/i.test(x))||'Quick Lane'):/catamarca/i.test(n)?(S.sucs.find(x=>/catamarca/i.test(x))||'Catamarca'):/casa central/i.test(n)?'La Rioja':n)};
+function vpParse(rows){
+  const t=String(rows[0]&&rows[0][0]||'');
+  if(!/ventas perdidas/i.test(t))throw new Error('No es el informe de Ventas perdidas de Autologica (Informes de repuestos > Gerenciales > Ventas perdidas > Por usuario).');
+  let periodo=null;
+  for(const r of rows.slice(0,10))for(const c of r){const m=String(c).match(/Fecha entre\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+y\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)periodo={desde:`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`,hasta:`${m[6]}-${m[5].padStart(2,'0')}-${m[4].padStart(2,'0')}`}}
+  if(!periodo)throw new Error('No encontré el período ("Fecha entre … y …") en el informe.');
+  let suc='',usr='';const items=[];
+  for(const r of rows){
+    for(let i=0;i<r.length;i++){if(r[i]==='Sucursal:')suc=String(r[i+2]||'');if(r[i]==='Usuario:')usr=String(r[i+2]||'').trim()}
+    if(typeof r[0]==='number'&&r[0]>30000&&String(r[7]).trim()!==''&&typeof r[10]==='number'){
+      const d=XLSX.SSF.parse_date_code(r[0]);const f=`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+      items.push({f,tc:String(r[1]).trim(),comp:String(r[3]).trim(),dep:r[5],o:String(r[6]).trim().toUpperCase(),c:norm(r[7]),d:String(r[8]).trim(),pv:String(r[9]).trim(),q:r[10],s:vpSucApp(suc),sa:suc,u:usr})
+    }
+  }
+  return {periodo,items};
+}
+const vpMonths=(a,b)=>{const out=[];let [y,m]=a.slice(0,7).split('-').map(Number);const [y2,m2]=b.slice(0,7).split('-').map(Number);while(y<y2||(y===y2&&m<=m2)){out.push(`${y}-${String(m).padStart(2,'0')}`);m++;if(m>12){m=1;y++}}return out};
+function vpUi(){const u=S.ui;if(!u.vp)u.vp={desde:'',hasta:'',suc:'',orig:'N',usr:'',q:'',min:2,met:'l'};return u.vp}
+function vpAll(){const mine=mySucs();return Object.values(S.vperd||{}).flatMap(d=>d.items||[]).filter(it=>isAdmin()||mine.includes(it.s))}
+function vpFiltered(){const v=vpUi();return vpAll().filter(it=>(!v.desde||it.f.slice(0,7)>=v.desde)&&(!v.hasta||it.f.slice(0,7)<=v.hasta)&&(!v.suc||it.s===v.suc)&&(!v.orig||it.o===v.orig)&&(!v.usr||it.u===v.usr))}
+const vpVal=it=>vpUi().met==='u'?it.q:1;
+function vpEnsure(){const need=[...new Set(vpAll().map(it=>it.s))].filter(s=>S.sucs.includes(s)&&!S.cache[s]);if(!need.length||S.vpLoading)return;S.vpLoading=true;
+  Promise.all(need.map(s=>loadSuc(s).catch(()=>{S.cache[s]={}}))).finally(()=>{S.vpLoading=false;if(S.tab==='fill'&&pfUi().view==='vp')render()})}
+function vpLine(s,code){const r=S.cache[s]&&S.cache[s].ventas?mvRes(s):null;if(!r)return null;if(!r.__vpIdx)r.__vpIdx=new Map(r.lines.map(l=>[norm(l.code),l]));return r.__vpIdx.get(code)||null}
+const vpInStd=(s,c)=>(S.stdBy[s]||[]).some(x=>norm(x)===c);
+/* piezas que se repiten: misma pieza perdida 2 o más veces en el período filtrado */
+function vpRepeats(items){
+  const by=new Map();
+  for(const it of items){let x=by.get(it.c);if(!x){x={c:it.c,d:it.d,o:it.o,n:0,q:0,meses:new Set(),sucs:new Map(),usrs:new Set(),ult:''};by.set(it.c,x)}
+    x.n++;x.q+=it.q;x.meses.add(it.f.slice(0,7));x.sucs.set(it.s,(x.sucs.get(it.s)||0)+1);x.usrs.add(it.u);if(it.f>x.ult)x.ult=it.f}
+  const min=vpUi().min||2;
+  return [...by.values()].filter(x=>x.n>=min).map(x=>Object.assign(x,{pend:[...x.sucs.keys()].filter(s=>!vpInStd(s,x.c))})).sort((a,b)=>(b.pend.length>0)-(a.pend.length>0)||b.n-a.n||b.q-a.q||b.ult.localeCompare(a.ult));
+}
+function vpAlertCount(){const v=vpUi(),save={desde:v.desde,hasta:v.hasta,suc:v.suc,usr:v.usr};v.desde=v.hasta=v.suc=v.usr='';const n=vpRepeats(vpFiltered()).filter(x=>x.pend.length).length;Object.assign(v,save);return n}
+function vpGroup(items,key){const m=new Map();for(const it of items){const k=key(it);m.set(k,(m.get(k)||0)+vpVal(it))}return m}
+/* gráficos SVG */
+function vpHBars(entries,opts={}){
+  if(!entries.length)return '<div class="empty" style="padding:14px">Sin datos.</div>';
+  const W=opts.W||520,rowH=26,pl=opts.pl||170,pr=46,H=entries.length*rowH+8,max=Math.max(...entries.map(e=>e[1]))||1;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label||'')}">${entries.map(([k,v,t],i)=>{const y=4+i*rowH,w=Math.max(2,(W-pl-pr)*v/max);const L=opts.lab||26,lab=String(opts.full?t:k).length>L?String(opts.full?t:k).slice(0,L-1)+'…':(opts.full?t:k);
+    return `<text x="${pl-8}" y="${y+16}" text-anchor="end">${esc(lab)}</text><rect x="${pl}" y="${y+4}" width="${w}" height="${rowH-10}" rx="3" fill="${opts.color||'var(--bar)'}"><title>${esc(t||k)}: ${fN(v)}</title></rect><text x="${pl+w+6}" y="${y+16}" style="fill:var(--ink)">${fN(v)}</text>`}).join('')}</svg>`;
+}
+function vpMonthChart(items){
+  const v=vpUi(),ms=items.length?vpMonths(items.reduce((a,b)=>a<b.f?a:b.f,'9999'),items.reduce((a,b)=>a>b.f?a:b.f,'0000')):[];
+  if(!ms.length)return '<div class="empty" style="padding:14px">Sin datos.</div>';
+  const sucs=[...new Set(items.map(i=>i.s))].sort();const val={};for(const it of items){const k=it.f.slice(0,7);(val[k]=val[k]||{})[it.s]=(val[k][it.s]||0)+vpVal(it)}
+  const tot=k=>sucs.reduce((a,s)=>a+((val[k]||{})[s]||0),0);
+  const W=560,H=230,pl=40,pr=8,pt=14,pb=26,max=Math.max(1,...ms.map(tot)),step=Math.pow(10,Math.floor(Math.log10(max))),nice=[1,2,2.5,5,10].map(x=>x*step).find(x=>max/x<=5)||step*10,top=Math.ceil(max/nice)*nice;
+  const bw=(W-pl-pr)/ms.length,Y=x=>pt+(H-pt-pb)*(1-x/top);
+  let g='';for(let x=0;x<=top+1e-9;x+=nice)g+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(x)}" y2="${Y(x)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(x)+4}" text-anchor="end">${fN(x)}</text>`;
+  const bars=ms.map((k,i)=>{let acc=0;const x=pl+i*bw+bw*.22,w=bw*.56;const segs=sucs.map((s,j)=>{const q=(val[k]||{})[s]||0;if(!q)return '';const y1=Y(acc+q),y0=Y(acc);acc+=q;return `<rect x="${x}" y="${y1}" width="${w}" height="${Math.max(0,y0-y1-1)}" fill="${VPC[j%VPC.length]}"><title>${esc(pfMesL(k))} · ${esc(s)}: ${fN(q)}</title></rect>`}).join('');
+    return segs+`<text x="${x+w/2}" y="${Y(acc)-5}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${acc?fN(acc):''}</text><text x="${x+w/2}" y="${H-8}" text-anchor="middle">${fMes(k)}</text>`}).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ventas perdidas por mes">${g}${bars}</svg><div class="legend">${sucs.map((s,j)=>`<span style="display:inline-flex;align-items:center;gap:6px"><i style="width:10px;height:10px;border-radius:2px;background:${VPC[j%VPC.length]};display:inline-block"></i>${esc(s)}</span>`).join('')}</div>`;
+}
+function vpPending(){const p=S.vpPend;if(!p)return '';
+  const ms=vpMonths(p.periodo.desde,p.periodo.hasta),ex=ms.filter(m=>(S.vperd||{})[m]);
+  return `<section class="panel" style="border-color:var(--accent)"><div class="panel-h" style="margin-bottom:6px"><div><h3>${esc(p.file)}</h3><p class="sub">${fN(p.items.length)} ventas perdidas del ${fD(p.periodo.desde)} al ${fD(p.periodo.hasta)} (${ms.map(fMes).join(', ')}). ${ex.length?`<b>Reemplaza lo guardado de ${ex.map(fMes).join(', ')}.</b>`:''}</p></div>
+    <div class="toolbar"><button class="btn pri" data-act="pfVpSave">Guardar</button><button class="btn" data-act="pfVpCancel">Cancelar</button></div></div></section>`}
+function vVP(){
+  vpEnsure();const v=vpUi(),all=vpAll(),F=vpFiltered(),met=v.met==='u'?'unidades':'ventas';
+  const meses=[...new Set(all.map(i=>i.f.slice(0,7)))].sort(),usrs=[...new Set(all.map(i=>i.u))].sort(),sucs=[...new Set(all.map(i=>i.s))].sort();
+  const R=vpRepeats(F),Rp=R.filter(x=>x.pend.length);
+  const tot=F.reduce((a,b)=>a+vpVal(b),0),u=F.reduce((a,b)=>a+b.q,0),pz=new Set(F.map(i=>i.c)).size;
+  const sortE=m=>[...m.entries()].sort((a,b)=>b[1]-a[1]);
+  const top=sortE(vpGroup(F,i=>i.c)).slice(0,15).map(([c,n])=>{const d=(F.find(i=>i.c===c)||{}).d||'';return [c,n,c+' · '+d]});
+  const rubros=sortE(vpGroup(F,i=>rubroDe(i.c,i.d))).slice(0,12);
+  const q=(v.q||'').toUpperCase(),D=F.filter(i=>!q||i.c.includes(q)||i.d.toUpperCase().includes(q)||i.u.toUpperCase().includes(q)||i.comp.includes(q)).sort((a,b)=>b.f.localeCompare(a.f));
+  const rep=new Set(R.map(x=>x.c));
+  const opt=(arr,sel,fmt)=>arr.map(x=>`<option value="${esc(x)}"${x===sel?' selected':''}>${esc(fmt?fmt(x):x)}</option>`).join('');
+  return `${vpPending()}
+  <section class="panel"><div class="panel-h"><div><h2>Ventas perdidas</h2><p class="sub">Pedidos de clientes que no se pudieron atender. Subí el informe de Autologica <i>Informes de repuestos › Gerenciales › Ventas perdidas › Por usuario</i> (podés traer varios meses juntos: cada carga reemplaza los meses que trae). Arrastralo acá o elegilo.</p></div>
+    <div class="toolbar"><label class="btn file pri" data-pfdrop="vp">Cargar informe<input type="file" accept=".xls,.xlsx" data-pffile="vp"></label><button class="btn" data-act="pfVpXls"${F.length?'':' disabled'}>Exportar Excel</button></div></div>
+    ${all.length?`<div class="toolbar vp-filt">
+      <label>Desde <select id="vpDesde"><option value="">inicio</option>${opt(meses,v.desde,fMes)}</select></label>
+      <label>Hasta <select id="vpHasta"><option value="">hoy</option>${opt(meses,v.hasta,fMes)}</select></label>
+      <label>Sucursal <select id="vpSuc"><option value="">Todas</option>${opt(sucs,v.suc)}</select></label>
+      <label>Vendedor <select id="vpUsr"><option value="">Todos</option>${opt(usrs,v.usr)}</select></label>
+      <label>Origen <select id="vpOrig"${v.orig==='N'?'':' style="border-color:#d97706;background:#fff7ed;color:#9a3412"'}><option value="N"${v.orig==='N'?' selected':''}>N · Original</option><option value="P"${v.orig==='P'?' selected':''}>P · Nacional</option><option value=""${!v.orig?' selected':''}>Todos</option></select></label>
+      <div class="seg" role="group" aria-label="Medir en"><button type="button" data-act="pfVpMet" data-k="l" aria-pressed="${v.met!=='u'}">Ventas</button><button type="button" data-act="pfVpMet" data-k="u" aria-pressed="${v.met==='u'}">Unidades</button></div>
+    </div>`:''}
+    <div class="pf-dropwide" data-pfdrop="vp"${all.length?' hidden':''}><b>Arrastrá acá el informe de ventas perdidas</b><span class="sub" style="margin:0">o tocá “Cargar informe”</span></div>
+  </section>
+  ${all.length?`
+  <div class="tiles">
+    <div class="tile"><div class="l">Ventas perdidas</div><div class="v">${fN(F.length)}</div><div class="n">líneas de pedido</div></div>
+    <div class="tile"><div class="l">Unidades</div><div class="v">${fN(u)}</div><div class="n">${F.length?fN(u/F.length,1)+' por venta':''}</div></div>
+    <div class="tile"><div class="l">Piezas distintas</div><div class="v">${fN(pz)}</div><div class="n">${sucs.length} sucursal${sucs.length>1?'es':''}</div></div>
+    <div class="tile"><div class="l">Se repiten</div><div class="v" style="color:${Rp.length?'var(--crit)':'var(--ok)'}">${fN(R.length)}</div><div class="n">${Rp.length?`${Rp.length} fuera del estándar`:'todas en el estándar'}</div></div>
+    <div class="tile"><div class="l">Vendedores</div><div class="v">${fN(new Set(F.map(i=>i.u)).size)}</div><div class="n">con ventas perdidas</div></div>
+  </div>
+  <section class="panel${Rp.length?' vp-alert':''}"><div class="panel-h"><div><h3>${Rp.length?`⚠ ${Rp.length} pieza${Rp.length>1?'s':''} que se repite${Rp.length>1?'n':''} y no está${Rp.length>1?'n':''} en el estándar`:'Piezas que se repiten'}</h3><p class="sub">Piezas perdidas ${v.min} o más veces en el período elegido. Son candidatas a sumar al estándar stock de la sucursal donde se perdieron. Stock y venta mensual son los últimos cargados de cada sucursal.</p></div>
+    <label class="pf-chk">Repetida desde <select id="vpMin">${[2,3,4,5].map(n=>`<option value="${n}"${n===v.min?' selected':''}>${n} veces</option>`).join('')}</select></label></div>
+    ${R.length?`<div class="tw" style="max-height:none"><table><thead><tr><th>Código</th><th>Descripción</th><th class="n">Veces</th><th class="n">Unidades</th><th>Meses</th><th>Vendedores</th><th>Última</th><th>Sucursal · estándar</th></tr></thead><tbody>
+    ${R.map(x=>`<tr><td class="code">${esc(x.c)}</td><td class="desc" title="${esc(x.d)}">${esc(x.d)}</td><td class="n"><b>${x.n}</b></td><td class="n">${fN(x.q)}</td><td>${[...x.meses].sort().map(fMes).join(', ')}</td><td class="desc">${esc([...x.usrs].join(', '))}</td><td>${fD(x.ult)}</td>
+      <td><div class="vp-sucs">${[...x.sucs.entries()].map(([s,n])=>{const L=vpLine(s,x.c),inS=vpInStd(s,x.c),info=L?`stock ${fN(L.st)} · venta ${fN(L.mad,1)}/mes`:S.cache[s]?'sin venta ni stock':'';
+        return `<span class="vp-suc">${esc(s)} (${n}) ${inS?'<span class="pill p-ok">en estándar</span>':(S.sucs.includes(s)&&isAdmin()||mySucs().includes(s))?`<button class="btn sm" data-act="pfVpStd" data-c="${esc(x.c)}" data-s="${esc(s)}">+ Estándar</button>`:''}${info?` <span class="faint">${info}</span>`:''}</span>`}).join('')}</div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:14px">Ninguna pieza se perdió ${v.min} o más veces en el período elegido.</div>`}
+  </section>
+  <div class="vp-grid">
+    <section class="panel"><h3 style="margin-bottom:8px">Por mes (${met})</h3><div class="chart">${vpMonthChart(F)}</div></section>
+    <section class="panel"><h3 style="margin-bottom:8px">Por sucursal (${met})</h3><div class="chart">${vpHBars(sortE(vpGroup(F,i=>i.s)),{label:'Por sucursal',pl:120})}</div></section>
+    <section class="panel"><h3 style="margin-bottom:8px">Por vendedor (${met})</h3><div class="chart">${vpHBars(sortE(vpGroup(F,i=>i.u)),{label:'Por vendedor',pl:120,color:'#2c9a6a'})}</div></section>
+    <section class="panel"><h3 style="margin-bottom:8px">Por rubro (${met})</h3><div class="chart">${vpHBars(rubros,{label:'Por rubro',color:'#8a63d2'})}</div></section>
+    <section class="panel vp-wide"><h3 style="margin-bottom:8px">Piezas más perdidas (${met}, top 15)</h3><div class="chart">${vpHBars(top,{label:'Piezas más perdidas',color:'#d9822b',W:1100,pl:430,lab:62,full:true})}</div></section>
+  </div>
+  <section class="panel"><div class="panel-h"><h3>Detalle (${fN(D.length)})</h3><input type="search" id="vpQ" placeholder="Buscar código, descripción, vendedor o comprobante" value="${esc(v.q||'')}" style="width:min(100%,340px)"></div>
+    <div class="tw"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Vendedor</th><th>Comprobante</th><th>Código</th><th>Descripción</th><th>Origen</th><th class="n">Cant.</th></tr></thead><tbody>
+    ${D.slice(0,500).map(i=>`<tr><td>${fD(i.f)}</td><td>${esc(i.s)}</td><td>${esc(i.u)}</td><td>${esc(i.tc+' '+i.comp)}</td><td class="code">${esc(i.c)}${rep.has(i.c)?' <span class="pill p-bajo" title="Se repite">repetida</span>':''}</td><td class="desc" title="${esc(i.d)}">${esc(i.d)}</td><td>${esc(i.o)}</td><td class="n">${fN(i.q)}</td></tr>`).join('')}</tbody></table></div></section>`:''}`;
+}
+async function vpLoadFile(f){
+  try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});const r=vpParse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}));
+    S.vpPend=Object.assign(r,{file:f.name});pfUi().view='vp';render();window.scrollTo({top:0,behavior:'smooth'})}
+  catch(e){toast(f.name+': '+(e.message||'no se pudo leer'))}
+}
+async function vpSave(){
+  const p=S.vpPend;if(!p||!db)return;const ms=vpMonths(p.periodo.desde,p.periodo.hasta),meta={archivo:p.file,desde:p.periodo.desde,hasta:p.periodo.hasta,usuario:ME()?ME().email:'',fecha:new Date().toISOString()};
+  try{for(const m of ms){const doc=Object.assign({mes:m,items:p.items.filter(i=>i.f.slice(0,7)===m)},meta);await db.doc('vperd/'+m).set(doc);S.vperd=Object.assign({},S.vperd,{[m]:doc})}
+    S.vpPend=null;logAct('Cargó ventas perdidas',`${p.items.length} líneas · ${ms.map(fMes).join(', ')}`,'Todas');toast('Ventas perdidas guardadas.');render()}
+  catch(e){toast('No se pudo guardar: '+(e.message||e.code))}
+}
+function vpXls(){
+  const F=vpFiltered(),R=vpRepeats(F);
+  exportXlsx(`Ventas perdidas ${stamp()}.xlsx`,[
+    {name:'Detalle',rows:[['Fecha','Sucursal','Vendedor','Comprobante','Código','Descripción','Origen','Proveedor','Cantidad','Se repite'],...F.sort((a,b)=>a.f.localeCompare(b.f)).map(i=>[i.f,i.s,i.u,i.tc+' '+i.comp,i.c,i.d,i.o,i.pv,i.q,R.some(x=>x.c===i.c)?'Sí':''])]},
+    {name:'Repetidas',rows:[['Código','Descripción','Veces','Unidades','Meses','Sucursales','Vendedores','Última','Fuera del estándar en'],...R.map(x=>[x.c,x.d,x.n,x.q,[...x.meses].sort().join(', '),[...x.sucs.entries()].map(([s,n])=>`${s} (${n})`).join(', '),[...x.usrs].join(', '),x.ult,x.pend.join(', ')])]},
+    {name:'Por mes',rows:[['Mes','Sucursal','Ventas','Unidades'],...(()=>{const m=new Map();for(const i of F){const k=i.f.slice(0,7)+'|'+i.s;const a=m.get(k)||[0,0];a[0]++;a[1]+=i.q;m.set(k,a)}return [...m.entries()].sort().map(([k,a])=>[...k.split('|'),...a])})()]},
+    {name:'Por vendedor',rows:[['Vendedor','Ventas','Unidades'],...(()=>{const m=new Map();for(const i of F){const a=m.get(i.u)||[0,0];a[0]++;a[1]+=i.q;m.set(i.u,a)}return [...m.entries()].sort((a,b)=>b[1][0]-a[1][0]).map(([k,a])=>[k,...a])})()]}
+  ]);
+}
 /* eventos propios de la pestaña */
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-act^="pf"]');if(!t||S.tab!=='fill')return;const p=pfUi(),a=t.dataset.act;
   if(a==='pfModo'){p.modo=t.dataset.k;render()}
+  else if(a==='pfView'){p.view=t.dataset.k;render();window.scrollTo(0,0)}
+  else if(a==='pfVpSave'){t.disabled=true;vpSave()}
+  else if(a==='pfVpCancel'){S.vpPend=null;render()}
+  else if(a==='pfVpMet'){vpUi().met=t.dataset.k;render()}
+  else if(a==='pfVpXls')vpXls();
+  else if(a==='pfVpStd'){const c=t.dataset.c,sc=t.dataset.s;S.stdBy[sc]=[...new Set([...(S.stdBy[sc]||[]),c])];saveStd();if(sc===stdKey())recompute();logAct('Agregó al estándar',c+' (por ventas perdidas)',sc);toast(`${c} agregada al estándar de ${sc}.`);render()}
   else if(a==='pfSave'){t.disabled=true;pfSave()}
   else if(a==='pfDiscard'){delete p.drafts[p.mes];Object.keys(p.msg).filter(k=>k.startsWith(p.mes)).forEach(k=>delete p.msg[k]);render()}
   else if(a==='pfOpen'){p.mes=t.dataset.k;p.del=null;render();window.scrollTo({top:0,behavior:'smooth'})}
@@ -3262,11 +3419,15 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{
   const t=e.target;if(S.tab!=='fill')return;const p=pfUi();
-  if(t.dataset.pffile){const fs=[...t.files];t.value='';if(fs.length)pfFiles(fs,t.dataset.pffile)}
+  if(t.dataset.pffile){const fs=[...t.files];t.value='';if(fs.length)pfFiles(fs,t.dataset.pffile==='vp'?null:t.dataset.pffile)}
+  else if(['vpDesde','vpHasta','vpSuc','vpUsr','vpOrig'].includes(t.id)){vpUi()[t.id.slice(2).toLowerCase()]=t.value;render()}
+  else if(t.id==='vpMin'){vpUi().min=+t.value;render()}
   else if(t.id==='pfMes'&&/^\d{4}-\d{2}$/.test(t.value)){p.mes=t.value;p.del=null;render()}
   else if(t.id==='pfDp'){p.dp=t.checked;render()}
   else if(t.id==='pfDemM'||t.id==='pfDemO')render();
 });
+let vpQT;
+document.addEventListener('input',e=>{const t=e.target;if(S.tab!=='fill'||t.id!=='vpQ')return;vpUi().q=t.value;clearTimeout(vpQT);vpQT=setTimeout(()=>{const pos=t.selectionStart,y=window.scrollY;render();window.scrollTo(0,y);const n=$('#vpQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}},250)});
 document.addEventListener('input',e=>{
   const t=e.target;if(S.tab!=='fill'||(t.id!=='pfDemM'&&t.id!=='pfDemO'))return;
   const p=pfUi(),d=pfDraft(p.mes),k=t.id==='pfDemM'?'demM':'demO';d[k]=t.value===''?null:Math.max(0,num(t.value));
@@ -3274,7 +3435,7 @@ document.addEventListener('input',e=>{
 });
 ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{if(S.tab!=='fill')return;const z=e.target.closest&&e.target.closest('[data-pfdrop]');if(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files')){e.preventDefault();document.querySelectorAll('[data-pfdrop].over').forEach(x=>x!==z&&x.classList.remove('over'));z&&z.classList.add('over')}}));
 document.addEventListener('dragleave',e=>{const z=e.target.closest&&e.target.closest('[data-pfdrop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over')});
-document.addEventListener('drop',e=>{if(S.tab!=='fill'||!e.dataTransfer||!e.dataTransfer.files.length)return;e.preventDefault();const z=e.target.closest&&e.target.closest('[data-pfdrop]');document.querySelectorAll('[data-pfdrop].over').forEach(x=>x.classList.remove('over'));pfFiles(e.dataTransfer.files,z?z.dataset.pfdrop:null)});
+document.addEventListener('drop',e=>{if(S.tab!=='fill'||!e.dataTransfer||!e.dataTransfer.files.length)return;e.preventDefault();const z=e.target.closest&&e.target.closest('[data-pfdrop]');document.querySelectorAll('[data-pfdrop].over').forEach(x=>x.classList.remove('over'));pfFiles(e.dataTransfer.files,z&&z.dataset.pfdrop!=='vp'?z.dataset.pfdrop:null)});
 
 boot();
 </script>
