@@ -1966,7 +1966,7 @@ function render(){
   if(S.tab==='depositos')bindDepChart();
   if(S.tab==='ford')mountFord();
   if(S.tab==='fyb')loadFyb();
-  if(S.tab==='usuarios'&&!S.usrs&&!S.usrsLoading)loadUsers();
+  if((S.tab==='usuarios'||(S.tab==='params'&&isAdmin()&&ME()))&&!S.usrs&&!S.usrsLoading)loadUsers();
   if(S.tab==='fill')bindPfChart();
 }
 function needData(){
@@ -2547,7 +2547,7 @@ function vAct2(){
 /* ---------- Vista: Usuarios (solo administrador) ---------- */
 const uSucs=x=>Array.isArray(x.sucursales)&&x.sucursales.length?x.sucursales:(x.sucursal?[x.sucursal]:[]);
 const uPerm=x=>Array.isArray(x.permisos)?x.permisos:TABS0.map(t=>t[0]);
-async function loadUsers(){S.usrsLoading=true;S.usrsErr='';try{S.usrs=await window.__adm.list()}catch(e){S.usrsErr=e.message;S.usrs=[]}S.usrsLoading=false;if(S.tab==='usuarios')render()}
+async function loadUsers(){S.usrsLoading=true;S.usrsErr='';try{S.usrs=await window.__adm.list()}catch(e){S.usrsErr=e.message;S.usrs=[]}S.usrsLoading=false;if(S.tab==='usuarios'||S.tab==='params')render()}
 function vUsers(){
   if(!isAdmin())return '';
   if(!window.__adm)return '<div class="empty">La administración de usuarios funciona en la página publicada, conectada a Supabase.</div>';
@@ -2904,7 +2904,10 @@ function vParams(){
   const P=S.P;const fams=[...new Set([...(S.res.fams||[]),...(P.exclFam||[])])].sort();
   const adm=isAdmin();
   const n=(id,l,h,step=1)=>`<label for="p_${id}">${l}<input type="number" id="p_${id}" data-p="${id}" step="${step}" min="0" value="${P[id]}"><small>${h}</small></label>`;
-  return `${adm?'':'<div class="note">Solo el administrador puede cambiar los parámetros. Acá los podés consultar.</div>'}<fieldset ${adm?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px"><section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
+  const me=ME();
+  const usrSec=!me?'':adm?`<div id="paramUsr" style="display:grid;gap:18px">${vUsers()}</div>`
+    :`<div class="note"><b>Usuarios, claves y permisos:</b> solo los ve el administrador. Entraste como <b>${esc(me.email)}</b>, que no es administrador. Para gestionarlos, entrá con la cuenta de administrador.</div>`;
+  return `${usrSec}${adm?'':'<div class="note">Solo el administrador puede cambiar los parámetros. Acá los podés consultar.</div>'}<fieldset ${adm?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px"><section class="panel"><div class="panel-h"><div><h2>Parámetros del estándar stock</h2><p class="sub">Los mismos parámetros de la hoja Reporte del Excel. Los cambios se aplican al instante y quedan guardados.</p></div>
     <button class="btn" data-act="resetParams">Volver a los valores del Excel</button></div>
     <div class="formula">MAD = venta del período ÷ días hábiles × 20<br>Std stock = ⌈ MAD × (ciclo + lead time + SS) ÷ 20 ⌉<br>Sugerido = ⌈ (Std stock − stock − pendientes) ÷ order unit ⌉ × order unit</div>
     <div class="params" style="margin-top:14px">
