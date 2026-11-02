@@ -3181,10 +3181,8 @@ function vPF(){
   const months=[...new Set([...Object.keys(S.pfill||{}),...Object.keys(PF_DEM0),...Object.keys(p.drafts).filter(k=>Object.keys(p.drafts[k]).length)])].sort().reverse();
   const perWarn=M.periodo.mostrador&&M.periodo.taller&&M.periodo.mostrador.mes!==M.periodo.taller.mes;
   const canSave=!!db&&(M.dirty||(!M.saved&&(M.demM!=null||M.demO!=null)));
-  return `<section class="panel"><div class="panel-h"><div><h2>Percent Fill</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, solo origen N, por canal: Mostrador y Oportunidad comercial (ventas a taller). <b>Percent fill = 100 − (piezas pedidas bajo demanda ÷ piezas vendidas × 100)</b>.</p></div>
-    <div class="toolbar"><div class="seg" role="group" aria-label="Contar por"><button type="button" data-act="pfModo" data-k="u" aria-pressed="${p.modo==='u'}">Unidades</button><button type="button" data-act="pfModo" data-k="r" aria-pressed="${p.modo==='r'}">Renglones</button></div>
-      <label class="pf-chk"><input type="checkbox" id="pfDp"${p.dp?' checked':''}> Dealer Prep 0km en taller</label>
-</div></div>
+  return `${vPfReport(M)}
+  <section class="panel" id="pfLoad"><div class="panel-h"><div><h2>Cargar o corregir un mes</h2><p class="sub">Subí los dos reportes de ventas de Autologica del mes y escribí las piezas pedidas bajo demanda de cada canal. Abajo ves el resultado de ese mes.</p></div></div>
     <div class="pf-load">
       <div class="pf-row"><label class="pf-f">Mes<input type="month" id="pfMes" value="${esc(p.mes)}"></label>
         <span class="sub" style="margin:0;align-self:end">${M.saved?`Guardado${M.fecha?' el '+fD(M.fecha.slice(0,10)):''}${M.usuario?' por '+esc(M.usuario):''}.`:'Este mes todavía no está guardado.'} Al cargar un reporte, el mes se toma de su período.</span></div>
@@ -3198,7 +3196,6 @@ function vPF(){
       ${!db?'<div class="note warn">Sin conexión a la base: el cálculo se ve pero no se puede guardar.</div>':''}
     </div></section>
   <div class="pf-cards" id="pfCards">${pfCards(M,C)}</div>
-  ${vPfReport(M)}
   <div class="note">Se cuentan solo repuestos con <b>origen N</b> de los dos reportes; las devoluciones restan. <b>Unidades</b> suma las unidades vendidas (en taller incluye litros de aceite con decimales). <b>Renglones</b> cuenta las líneas de venta con cantidad positiva. Si el reporte trae Quick Lane, no se suma.</div>`;
 }
 function vFill(){
@@ -3289,19 +3286,21 @@ function vPfReport(M){
   const opt=(sel)=>all.map(k=>`<option value="${k}"${k===sel?' selected':''}>${esc(pfMesL(k))}</option>`).join('');
   const tile=(l,x,col)=>`<div class="tile"><div class="l">${l}</div><div class="v" style="color:${x.f==null?'var(--muted)':'var(--ok)'}">${x.f==null?'–':pfP(x.f)}</div><div class="n">${x.f==null?'faltan datos del período':`${pfQ(x.v)} ${unit} · ${pfQ(x.d)} bajo demanda`}</div>${x.best&&x.n>1?`<div class="n">mejor ${fMes(x.best[0])} ${pfP(x.best[1])} · peor ${fMes(x.worst[0])} ${pfP(x.worst[1])}</div>`:''}</div>`;
   const done=A.rows.filter(r=>r.R.pm!=null&&r.R.pt!=null).length;
-  return `<section class="panel" id="pfReport"><div class="panel-h"><div><h2>Reporte de Percent Fill</h2><p class="sub">${esc(pfPerLabel(ms))} · La Rioja + Catamarca · origen N · contado en ${unit}${p.dp?'':' · sin Dealer Prep'}. El percent fill del período se calcula con el total de piezas vendidas y pedidas bajo demanda de esos meses.</p></div>
-    <div class="toolbar"><label class="pf-chk">Desde <select id="pfRd"><option value="">el primero</option>${opt(p.rd)}</select></label><label class="pf-chk">Hasta <select id="pfRh"><option value="">el último</option>${opt(p.rh)}</select></label>
+  return `<section class="panel" id="pfReport"><div class="panel-h"><div><h2>Percent Fill · ${esc(pfPerLabel(ms))}</h2><p class="sub">Cumplimiento de entrega de piezas a clientes, La Rioja + Catamarca, origen N, contado en ${unit}${p.dp?'':', sin Dealer Prep'}. <b>Percent fill = 100 − (piezas pedidas bajo demanda ÷ piezas vendidas × 100)</b>, con el total de los meses elegidos.</p></div>
+    <div class="toolbar"><div class="seg" role="group" aria-label="Contar por"><button type="button" data-act="pfModo" data-k="u" aria-pressed="${p.modo==='u'}">Unidades</button><button type="button" data-act="pfModo" data-k="r" aria-pressed="${p.modo==='r'}">Renglones</button></div>
+      <label class="pf-chk"><input type="checkbox" id="pfDp"${p.dp?' checked':''}> Dealer Prep 0km en taller</label></div><div class="toolbar"><label class="pf-chk">Desde <select id="pfRd"><option value="">el primero</option>${opt(p.rd)}</select></label><label class="pf-chk">Hasta <select id="pfRh"><option value="">el último</option>${opt(p.rh)}</select></label>
       <button class="btn" data-act="pfXls"${ms.length?'':' disabled'}>Excel</button><button class="btn" data-act="pfPrint"${ms.length?'':' disabled'}>Imprimir / PDF</button></div></div>
     <div class="tiles">${tile('Percent fill · Mostrador',A.m)}${tile('Percent fill · Oportunidad',A.o)}${tile('Percent fill · Total',A.t)}
       <div class="tile"><div class="l">Meses completos</div><div class="v">${done} / ${ms.length}</div><div class="n">${done<ms.length?'faltan reportes o cantidades':'todos con datos'}</div></div>
       <div class="tile"><div class="l">Ventas perdidas</div><div class="v">${fN(vpN)}</div><div class="n"><button class="btn sm" data-act="pfView" data-k="vp" style="margin-top:2px">Ver ventas perdidas</button></div></div></div>
+    ${(()=>{const f=A.rows.filter(r=>!(r.R.pm!=null&&r.R.pt!=null)).map(r=>r.k);return f.length?`<div class="note warn" style="margin-top:12px">Para calcular el percent fill falta cargar los reportes de ventas de Autologica (mostrador y taller) o las cantidades bajo demanda de: <b>${f.map(pfMesL).join(', ')}</b>. ${f.map(k=>`<button class="btn sm" data-act="pfOpen" data-k="${k}">Cargar ${esc(fMes(k))}</button>`).join(' ')}</div>`:''})()}
   </section>
   <div class="vp-grid">
     <section class="panel"><h3 style="margin-bottom:8px">Percent fill por mes</h3><div class="chart" id="pfChart"></div>${pfLegend()}</section>
     <section class="panel"><h3 style="margin-bottom:8px">Piezas pedidas bajo demanda por mes</h3><div class="chart">${pfDemChart(A.rows)}</div>${pfLegend()}</section>
     <section class="panel vp-wide"><h3 style="margin-bottom:8px">Piezas vendidas origen N por canal y sucursal (${unit}, total del período)</h3><div class="chart">${vpHBars(Object.entries(A.suc).sort((a,b)=>b[1]-a[1]),{label:'Vendidas por canal y sucursal',W:1100,pl:260,lab:40})}</div></section>
   </div>
-  <section class="panel"><div class="panel-h"><div><h3>Detalle por mes</h3><p class="sub">Tocá un mes para verlo o completarlo arriba. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
+  <section class="panel"><div class="panel-h"><div><h3>Detalle por mes</h3><p class="sub">Tocá un mes para cargarlo o corregirlo abajo. Los meses de julio a octubre traen las cantidades bajo demanda de tu planilla; falta cargar sus reportes de Autologica.</p></div></div>
     <div class="tw" style="max-height:none"><table><thead>
       <tr><th></th><th class="n" colspan="4" style="text-align:center">Mostrador</th><th class="n" colspan="4" style="text-align:center">Oportunidad comercial (taller)</th><th></th></tr>
       <tr><th>Mes</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th class="n">Vendidas N</th><th class="n">Bajo demanda</th><th class="n">% bajo dem.</th><th class="n">Percent fill</th><th>Estado</th></tr></thead>
@@ -3481,7 +3480,7 @@ document.addEventListener('click',e=>{
   else if(a==='pfVpStd'){const c=t.dataset.c,sc=t.dataset.s;S.stdBy[sc]=[...new Set([...(S.stdBy[sc]||[]),c])];saveStd();if(sc===stdKey())recompute();logAct('Agregó al estándar',c+' (por ventas perdidas)',sc);toast(`${c} agregada al estándar de ${sc}.`);render()}
   else if(a==='pfSave'){t.disabled=true;pfSave()}
   else if(a==='pfDiscard'){delete p.drafts[p.mes];Object.keys(p.msg).filter(k=>k.startsWith(p.mes)).forEach(k=>delete p.msg[k]);render()}
-  else if(a==='pfOpen'){p.mes=t.dataset.k;p.del=null;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='pfOpen'){p.mes=t.dataset.k;p.del=null;render();const L=$('#pfLoad');L&&L.scrollIntoView({block:'start',behavior:'smooth'})}
   else if(a==='pfXls')pfXls();
   else if(a==='pfDel'){p.del=p.mes;render()}
   else if(a==='pfDelNo'){p.del=null;render()}
