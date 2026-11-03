@@ -647,7 +647,11 @@ function renderLdEv(L){
     options:baseOpts({plugins:{...baseOpts().plugins,tooltip:{...baseOpts().plugins.tooltip,callbacks:{label:c=>c.raw==null?`${c.dataset.label}: sin líneas`:`${c.dataset.label}: ${fD1(c.raw)} d a factura · ${fD1(c.raw+LLEGA)} d a llegada (${fmtN(c.dataset.nn[c.dataIndex])} líneas)`}}},
       scales:{...baseOpts().scales,y:{...baseOpts().scales.y,title:{display:true,text:"días",color:css("--muted"),font:{family:"IBM Plex Sans",size:11}}}}})});
 }
-$("ldWin").querySelectorAll("button").forEach(b=>b.onclick=()=>{state.ldWin=+b.dataset.w;$("ldWin").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));renderLead();if(!$("codeSec").hidden)renderCode()});
+const WINS=[[1,"1 mes"],[2,"2 meses"],[3,"3 meses"],[4,"4 meses"],[0,"Todo"]];
+const winSeg=id=>`<span class="seg" id="${id}">${WINS.map(([w,l])=>`<button type="button" data-w="${w}"${state.ldWin===w?' class="on"':""}>${l}</button>`).join("")}</span>`;
+// el mismo período vale para Demora de facturación y para el buscador de código
+function setWin(w){state.ldWin=w;["ldWin","cqWin"].forEach(id=>{const e=$(id);if(e)e.querySelectorAll("button").forEach(x=>x.classList.toggle("on",+x.dataset.w===w))});renderLead();if(!$("codeSec").hidden)renderCode()}
+$("ldWin").querySelectorAll("button").forEach(b=>b.onclick=()=>setWin(+b.dataset.w));
 function ddpStats(L){
   const g=f=>{const a=L.filter(f),v=a.map(x=>x.lead);return {n:a.length,u:a.reduce((s,x)=>s+x.u,0),prom:avg(v),med:median(v),sum:v.reduce((s,x)=>s+x,0)}};
   return {ddp:g(x=>x.ddp),otr:g(x=>!x.ddp),tot:g(()=>true)};
@@ -757,7 +761,7 @@ function renderCode(){
     <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
     <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
   </div>
-  ${(()=>{const G0=leadLines(filtered(false)),G=winLines(G0),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))),t=esc(R.codes.join(", "));return `<div>${ddpHTML(G,`Demora general y de ${t} · facturas de ${winTxt(G0)}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas en el período elegido (cambialo en Demora de facturación).</div>'}</div>`})()}
+  ${(()=>{const G0=leadLines(filtered(false)),G=winLines(G0),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))),t=esc(R.codes.join(", "));return `<div class="ddpw" style="margin-top:4px"><span class="flabel">Promedio de los últimos</span>${winSeg("cqWin")}</div><div>${ddpHTML(G,`Demora general y de ${t} · facturas de ${winTxt(G0)}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas en el período elegido (cambialo en Demora de facturación).</div>'}</div>`})()}
   <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th title="Fecha de factura + 2 días">Llegada prob.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
     L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
       const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
@@ -765,6 +769,7 @@ function renderCode(){
       return `<tr><td>${dt(x.fp)}</td><td class="code"><b>${esc(x.np)}</b></td><td class="code">${esc(x.item)}</td><td>${tipoTag(x.tipo)}</td><td class="code">${esc(x.pp)}${x.pf!==x.pp?` → <b>${esc(x.pf)}</b>`:""}</td><td class="r">${fmtN(x.q)}</td><td>${st}</td><td>${esc(estTxt(x.eRaw))}</td><td class="r">${d}</td><td class="code">${esc(x.nf)}</td><td>${dt(x.ff)}</td><td>${x.est==="facturado"?dt(addD(x.ff,LLEGA)):""}</td><td class="code">${esc([...x.cajas].join(", "))}</td><td class="r">${fmt$(x.vt)}</td><td class="cm">${esc(x.co)}</td></tr>`}).join("")
   }</tbody></table></div>
   <div class="hint">Días: en pendientes, los que lleva esperando desde el pedido; en facturadas, los que tardó desde el pedido hasta la factura.</div>`;
+  {const e=$("cqWin");if(e)e.querySelectorAll("button").forEach(b=>b.onclick=()=>setWin(+b.dataset.w))}
   $("cqClose").onclick=()=>{$("cq").value="";renderCode();$("cq").focus()};
 }
 $("cq").oninput=()=>{clearTimeout(renderCode.t);renderCode.t=setTimeout(renderCode,150)};
