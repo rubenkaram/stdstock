@@ -2076,7 +2076,7 @@ const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
 /* Permisos por sección: el admin ve todo; permisos vacío (null) = todas las secciones */
-const MENU_GRP={informes:{t:'Informes',k:['informe','vendidos','fyb']},stock:{t:'Stock',k:['depositos','stockact']}};
+const MENU_GRP={informes:{t:'Informes',k:['informe','vendidos','fyb']},stock:{t:'Stock',k:['depositos','stockact','control']},hist:{t:'Historial',k:['historial','actividad']}};
 const grpOf=k=>Object.keys(MENU_GRP).find(g=>MENU_GRP[g].k.includes(k))||null;
 const grpTabs=g=>MENU_GRP[g].k.filter(k=>can(k));
 const ADMIN_TABS=[['usuarios','Usuarios'],['actividad','Actividad']];
