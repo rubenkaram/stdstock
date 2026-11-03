@@ -335,6 +335,10 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;border:1px solid var(--line-strong);color:var(--ink-2)}
 .pill i{width:7px;height:7px;border-radius:50%}
 .cbuscar{flex:1;min-width:240px}
+.ldavg{display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;padding:14px 16px;border-radius:8px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+.ldavg .ll{display:block;font-size:13px;font-weight:600;color:var(--ink-2)}
+.ldavg .lv{display:block;font-family:var(--f-display);font-weight:700;font-size:44px;line-height:1;color:var(--accent)}
+.ldavg .lc{font-size:13px;color:var(--ink-2);line-height:1.6}
 .cbuscar input{flex:1;min-width:180px;font:inherit;font-family:var(--f-mono);font-size:14px;padding:8px 12px;border:1.5px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
 .cq-h{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px}
 .cq-h h2{margin:0}
@@ -417,6 +421,7 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 
   <section class="card" id="ldSec" aria-label="Demora de facturación">
     <div class="card-h"><div><h2>Demora de facturación</h2><div class="hint">Días entre la fecha del pedido y la fecha de la factura de Ford, por línea facturada (pedido + ítem + factura). Respeta los filtros de tipo y mes de arriba.</div></div></div>
+    <div class="ldavg" id="ldAvg"></div>
     <div class="botiles" id="ldTiles"></div>
     <div class="tbar"><input type="search" id="ldQ" placeholder="Buscar código…" aria-label="Buscar código en demora"><span class="foot" id="ldCount"></span></div>
     <div class="tw" id="ldTw"></div>
@@ -605,15 +610,19 @@ state.ldQ="";state.ldSort={k:"prom",d:-1};
 const LDCOLS=[["Código","c","code"],["Pedidos","peds"],["Líneas fact.","n"],["Unid. fact.","u"],["Demora prom.","prom"],["Mediana","med"],["Mín.","min"],["Máx.","max"],["Última factura","last"],["Tipos","tipos"]];
 function renderLead(){
   const L=leadLines(filtered(true));
-  if(!L.length){$("ldTiles").innerHTML="";$("ldTw").innerHTML='<div class="empty">No hay líneas facturadas con estos filtros.</div>';$("ldCount").textContent="";return}
+  if(!L.length){$("ldAvg").innerHTML="";$("ldTiles").innerHTML="";$("ldTw").innerHTML='<div class="empty">No hay líneas facturadas con estos filtros.</div>';$("ldCount").textContent="";return}
   const v=L.map(x=>x.lead),uw=L.reduce((a,x)=>a+x.lead*x.u,0)/L.reduce((a,x)=>a+x.u,0);
   const sh=f=>pct(L.filter(f).length,L.length);
   const tiles=[
-    {l:"Promedio general",v:fD1(avg(v))+" d",s:`${fmtN(L.length)} líneas facturadas · ponderado por unidades ${fD1(uw)} d`,c:"--accent"},
     {l:"Mediana",v:fD1(median(v))+" d",s:`la mitad de las líneas se factura en ${fD1(median(v))} días o menos`,c:"--accent"},
     {l:"Rápidas",v:fmtP(sh(x=>x.lead<=7)),s:"facturadas en 7 días o menos",c:"--good"},
     {l:"Lentas",v:fmtP(sh(x=>x.lead>15)),s:`más de 15 días · máximo ${fmtN(Math.max(...v))} d`,c:"--crit"},
     ...TIPOS.filter(t=>state.tipos.has(t.k)).map(t=>{const a=L.filter(x=>x.tipo===t.k).map(x=>x.lead);return {l:"Promedio "+t.l,v:a.length?fD1(avg(a))+" d":"—",s:a.length?`${fmtN(a.length)} línea${a.length===1?"":"s"} · mediana ${fD1(median(a))} d`:"sin líneas facturadas",c:t.v}})];
+  const sumD=v.reduce((a,x)=>a+x,0),uT=L.reduce((a,x)=>a+x.u,0);
+  $("ldAvg").innerHTML=`<div><span class="ll">Promedio general de demora</span><span class="lv">${fD1(avg(v))} días</span></div>
+    <div class="lc"><b>Cálculo:</b> ${fmtN(sumD)} días sumados ÷ ${fmtN(L.length)} líneas facturadas = <b>${fD1(avg(v))} días</b><br>
+    Cada línea: fecha de factura − fecha de pedido. Ponderado por unidades (${fmtN(uT)} u): <b>${fD1(uw)} días</b>.<br>
+    Pedidos del ${dt(L.reduce((a,x)=>x.fp<a?x.fp:a,L[0].fp))} al ${dt(L.reduce((a,x)=>x.fp>a?x.fp:a,L[0].fp))} · ${[...new Set(L.map(x=>x.tipo))].map(k=>TIPOS.find(t=>t.k===k).l).join(", ")}${state.mes==="all"?"":" · "+MESES_L[+state.mes.slice(5)-1]+" "+state.mes.slice(0,4)}</div>`;
   $("ldTiles").innerHTML=tiles.map(t=>`<div class="botile" style="--c:var(${t.c});cursor:default"><span class="bl">${t.l}</span><span class="bv">${t.v}</span><span class="bs">${t.s}</span></div>`).join("");
   let P=leadPieces(L);const q=state.ldQ;
   if(q){const k=q.replace(/[^a-z0-9]/g,"");P=P.filter(o=>o.c.toLowerCase().replace(/[^a-z0-9]/g,"").includes(k))}
