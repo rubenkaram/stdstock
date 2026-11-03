@@ -42,6 +42,10 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
 nav.tabs button{appearance:none;border:0;background:none;font:600 13px var(--f-body);color:var(--muted);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
 nav.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
 nav.tabs button:hover{color:var(--ink)}
+.subnav{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.subnav button{appearance:none;font:600 13px var(--f-body);color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.subnav button:hover{color:var(--ink)}
+.subnav button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 main{padding-top:20px;display:grid;gap:18px}
 h2{font-family:var(--f-display);font-size:19px;margin:0;text-wrap:balance}
 h3{font-size:14px;margin:0;font-weight:600}
@@ -2072,6 +2076,9 @@ const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
 /* Permisos por sección: el admin ve todo; permisos vacío (null) = todas las secciones */
+const MENU_GRP={informes:{t:'Informes',k:['informe','vendidos','fyb']},stock:{t:'Stock',k:['depositos','stockact']}};
+const grpOf=k=>Object.keys(MENU_GRP).find(g=>MENU_GRP[g].k.includes(k))||null;
+const grpTabs=g=>MENU_GRP[g].k.filter(k=>can(k));
 const ADMIN_TABS=[['usuarios','Usuarios'],['actividad','Actividad']];
 const can=k=>{const u=ME();if(!u||u.admin)return true;if(ADMIN_TABS.some(x=>x[0]===k))return false;return !u.permisos||u.permisos.includes(k)};
 const mySucs=()=>{const u=ME();if(!u||u.admin)return S.sucs;return (u.sucursales||[]).length?u.sucursales:[S.P.sucursal]};
@@ -2183,7 +2190,15 @@ const finalOf=l=>S.finals[l.code]!=null?S.finals[l.code]:l.sug;
 function renderShell(){
   const TABS=TABS0.concat(ME()&&ME().admin?ADMIN_TABS:[]).filter(([k])=>can(k));
   if(TABS.length&&!can(S.tab))S.tab=TABS[0][0];
-  $('#tabs').innerHTML=TABS.map(([k,t])=>`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${t}</button>`).join('');
+  // secciones agrupadas en el menú: una sola pestaña arriba y los botones de cada sección adentro
+  S.grpLast=S.grpLast||{};
+  const seen=new Set(),top=[];
+  for(const [k,t] of TABS){const g=grpOf(k);
+    if(!g){top.push(`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${t}</button>`);continue}
+    if(seen.has(g))continue;seen.add(g);const ks=grpTabs(g);
+    const dest=ks.includes(S.grpLast[g])?S.grpLast[g]:ks[0];
+    top.push(`<button role="tab" data-tab="${dest}" aria-selected="${ks.includes(S.tab)}">${ks.length>1?MENU_GRP[g].t:tabName(ks[0])}</button>`)}
+  $('#tabs').innerHTML=top.join('');
   renderChips();
 }
 function renderChips(){
@@ -2208,7 +2223,10 @@ function render(){
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
   if(!can(S.tab)){m.innerHTML='<div class="empty">Tu usuario no tiene acceso a ninguna sección. Pedile acceso al administrador.</div>';return}
   const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl,fill:vFill,stockact:vStockAct}[S.tab]||vSug;
-  m.innerHTML=fn();
+  const g=grpOf(S.tab);let sub='';
+  if(g){S.grpLast=S.grpLast||{};S.grpLast[g]=S.tab;const ks=grpTabs(g);
+    if(ks.length>1)sub=`<nav class="subnav" role="tablist" aria-label="${esc(MENU_GRP[g].t)}">${ks.map(k=>`<button role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${esc(tabName(k))}</button>`).join('')}</nav>`}
+  m.innerHTML=sub+fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
   if(S.tab==='ford')mountFord();
