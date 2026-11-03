@@ -334,6 +334,18 @@ tr.sub table{font-size:12.5px}
 tr.sub table td{border-bottom:1px solid var(--line);background:transparent;padding:6px 10px}
 .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;border:1px solid var(--line-strong);color:var(--ink-2)}
 .pill i{width:7px;height:7px;border-radius:50%}
+.cbuscar{flex:1;min-width:240px}
+.cbuscar input{flex:1;min-width:180px;font:inherit;font-family:var(--f-mono);font-size:14px;padding:8px 12px;border:1.5px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
+.cq-h{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px}
+.cq-h h2{margin:0}
+.cq-st{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cq-st>div{background:var(--surface);padding:10px 12px}
+.cq-st .l{font-size:12px;color:var(--ink-2)}
+.cq-st .v{font-family:var(--f-display);font-weight:600;font-size:26px;line-height:1.1}
+.cq-st .n{font-size:12px;color:var(--muted)}
+.cq-msg{font-size:14px;padding:10px 12px;border-radius:6px;background:var(--surface-2);border-left:4px solid var(--c,var(--accent))}
+.cq-codes{display:flex;flex-wrap:wrap;gap:6px}
+.cq-codes button{font:inherit;font-family:var(--f-mono);font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
 .tipo{font-family:var(--f-mono);font-size:11.5px;font-weight:500;padding:2px 7px;border-radius:4px;color:var(--ink);background:color-mix(in srgb,var(--c) 18%,transparent);border:1px solid color-mix(in srgb,var(--c) 45%,transparent)}
 .foot{font-size:12px;color:var(--muted)}
 .empty{padding:28px;text-align:center;color:var(--muted)}
@@ -382,7 +394,10 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
     <div class="fgroup"><span class="flabel">Tipo de pedido</span><span id="tipoChips" class="fgroup"></span></div>
     <div class="fgroup"><label class="flabel" for="mes">Mes</label><select id="mes"></select></div>
     <div class="fgroup"><button class="btn" id="reset" type="button">Limpiar filtros</button></div>
+    <div class="fgroup cbuscar"><label class="flabel" for="cq">Buscar código</label><input type="search" id="cq" placeholder="Ej. MB3Z/9601/C o MB3Z9601C" autocomplete="off" spellcheck="false"></div>
   </section>
+
+  <section class="card" id="codeSec" hidden aria-label="Resultado de la búsqueda de código"></section>
 
   <section class="kpis" id="kpis"></section>
 
@@ -522,7 +537,7 @@ function load(aoa,name){
   const months=[...new Set(rows.map(r=>r.mk))].sort();
   $("mes").innerHTML='<option value="all">Todos los meses</option>'+months.map(m=>`<option value="${m}">${MESES_L[+m.slice(5)-1]} ${m.slice(0,4)}</option>`).join("");
   state.mes="all";$("mes").value="all";state.open.clear();
-  buildChips();render();
+  buildChips();render();renderCode();
 }
 
 /* ---------- aggregation ---------- */
@@ -560,6 +575,64 @@ seg("segMes","segMes");seg("segTipo","segTipo");seg("segEst","segEst");seg("segT
 $("mes").onchange=e=>{state.mes=e.target.value;render()};
 $("reset").onclick=()=>{state.tipos=new Set(TIPOS.map(t=>t.k));state.mes="all";$("mes").value="all";state.q="";$("q").value="";buildChips();render()};
 $("q").oninput=e=>{state.q=e.target.value.toLowerCase();renderTable()};
+/* ---------- Buscador de código ---------- */
+const ckey=v=>String(v??"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+function codeLines(q){
+  const k=ckey(q);if(k.length<3)return null;
+  const ex=ROWS.filter(r=>ckey(r.pp)===k||ckey(r.pf)===k);
+  if(ex.length)return {exact:true,rows:ex,codes:[...new Set(ex.map(r=>r.pp))]};
+  const pa=ROWS.filter(r=>ckey(r.pp).includes(k)||ckey(r.pf).includes(k));
+  return {exact:false,rows:pa,codes:[...new Set(pa.map(r=>r.pp))]};
+}
+function renderCode(){
+  const sec=$("codeSec"),q=$("cq").value.trim();
+  if(!q||!ROWS.length){sec.hidden=true;sec.innerHTML="";return}
+  sec.hidden=false;
+  const per=esc($("srcRange").textContent.replace(/\s*·.*$/,""));
+  const R=codeLines(q);
+  if(!R){sec.innerHTML='<div class="hint">Escribí al menos 3 caracteres del código.</div>';return}
+  if(!R.rows.length){sec.innerHTML=`<div class="cq-h"><h2 style="font-family:var(--f-mono)">${esc(q.toUpperCase())}</h2></div><div class="cq-msg" style="--c:var(--crit)"><b>No se pidió a Ford</b> en el período del Wings cargado (${per}).</div>`;return}
+  if(!R.exact&&R.codes.length>1){
+    sec.innerHTML=`<div class="cq-h"><h2>${fmtN(R.codes.length)} códigos contienen “${esc(q)}”</h2><span class="hint">Elegí uno</span></div><div class="cq-codes">${R.codes.sort().slice(0,60).map(c=>`<button type="button" data-c="${esc(c)}">${esc(c)}</button>`).join("")}${R.codes.length>60?`<span class="hint">+${R.codes.length-60} más; escribí más caracteres</span>`:""}</div>`;
+    sec.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{$("cq").value=b.dataset.c;renderCode()});return}
+  // una línea por pedido + ítem + estado + factura (Wings repite la línea por caja)
+  const m=new Map();
+  for(const r of R.rows){const kk=lineKey(r)+"|"+r.eRaw+"|"+r.nf;let o=m.get(kk);if(!o){o=Object.assign(Object.create(r),{q:0,cajas:new Set()});m.set(kk,o)}o.q+=r.qf;if(r.caja)o.cajas.add(r.caja)}
+  const L=[...m.values()].sort((a,b)=>b.fp-a.fp||String(a.item).localeCompare(String(b.item),undefined,{numeric:true}));
+  const sum=e=>L.filter(x=>x.est===e).reduce((a,x)=>a+x.q,0);
+  const uT=L.reduce((a,x)=>a+x.q,0),uF=sum("facturado"),uP=sum("pendiente"),uC=sum("cancelado");
+  const peds=new Set(L.map(x=>x.np));
+  const fac=L.filter(x=>x.est==="facturado"),pen=L.filter(x=>x.est==="pendiente");
+  const lastF=fac.reduce((a,x)=>!a||(x.ff||x.fp)>(a.ff||a.fp)?x:a,null);
+  const oldP=pen.reduce((a,x)=>!a||x.fp<a.fp?x:a,null);
+  const subs=[...new Set(L.filter(x=>x.pf&&x.pf!==x.pp).map(x=>x.pp+" → "+x.pf))];
+  let msg,c;
+  if(pen.length){const cats={};pen.forEach(x=>{const k=BOCAT[boCat(x)].l;cats[k]=(cats[k]||0)+x.q});
+    msg=`<b>Hay ${fmtN(uP)} u pendientes de facturar</b> (${Object.entries(cats).map(([k,v])=>`${esc(k)}: ${fmtN(v)} u`).join(" · ")}). La más vieja es del pedido <b>${esc(oldP.np)}</b> del ${dt(oldP.fp)}: ${daysOld(oldP.fp)} días esperando.${uF?` Ya se facturaron ${fmtN(uF)} u (última ${esc(lastF.nf||"")}${lastF.ff?" del "+dt(lastF.ff):""}).`:""}`;c="--warn"}
+  else if(uF){msg=`<b>Todo lo pedido está facturado</b>${uC?` (salvo ${fmtN(uC)} u canceladas)`:""}. Última factura ${esc(lastF.nf||"")}${lastF.ff?` del ${dt(lastF.ff)}`:""}, pedido ${esc(lastF.np)}.`;c="--good"}
+  else{msg=`<b>Todo lo pedido fue cancelado por Ford.</b>`;c="--crit"}
+  sec.innerHTML=`<div class="cq-h"><div><h2 style="font-family:var(--f-mono)">${esc(R.codes.join(", "))}</h2><div class="hint">Busca en todo el Wings cargado (${per}), sin los filtros de tipo y mes.${R.exact?"":" Coincidencia parcial con lo escrito."}</div></div><button class="btn" type="button" id="cqClose">Cerrar</button></div>
+  <div class="cq-msg" style="--c:var(${c})">${msg}</div>
+  ${subs.length?`<div class="hint">Reemplazo: ${subs.map(esc).join(" · ")}</div>`:""}
+  <div class="cq-st">
+    <div><div class="l">Pedidos</div><div class="v">${fmtN(peds.size)}</div><div class="n">${fmtN(L.length)} líneas</div></div>
+    <div><div class="l">Unidades pedidas</div><div class="v">${fmtN(uT)}</div></div>
+    <div><div class="l">Facturadas</div><div class="v" style="color:var(--good-ink)">${fmtN(uF)}</div><div class="n">${lastF?"última "+dt(lastF.ff||lastF.fp):"—"}</div></div>
+    <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
+    <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
+  </div>
+  <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
+    L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
+      const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
+      const d=cat?`<span class="age ${ageCls(daysOld(x.fp))}">${daysOld(x.fp)}</span>`:x.lead!=null?`<span title="Días desde el pedido hasta la factura">${x.lead}</span>`:"";
+      return `<tr><td>${dt(x.fp)}</td><td class="code"><b>${esc(x.np)}</b></td><td class="code">${esc(x.item)}</td><td>${tipoTag(x.tipo)}</td><td class="code">${esc(x.pp)}${x.pf!==x.pp?` → <b>${esc(x.pf)}</b>`:""}</td><td class="r">${fmtN(x.q)}</td><td>${st}</td><td>${esc(estTxt(x.eRaw))}</td><td class="r">${d}</td><td class="code">${esc(x.nf)}</td><td>${dt(x.ff)}</td><td class="code">${esc([...x.cajas].join(", "))}</td><td class="r">${fmt$(x.vt)}</td><td class="cm">${esc(x.co)}</td></tr>`}).join("")
+  }</tbody></table></div>
+  <div class="hint">Días: en pendientes, los que lleva esperando desde el pedido; en facturadas, los que tardó desde el pedido hasta la factura.</div>`;
+  $("cqClose").onclick=()=>{$("cq").value="";renderCode();$("cq").focus()};
+}
+$("cq").oninput=()=>{clearTimeout(renderCode.t);renderCode.t=setTimeout(renderCode,150)};
+$("cq").onkeydown=e=>{if(e.key==="Escape"){$("cq").value="";renderCode()}};
+
 function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,4200)}
 
 /* ---------- KPIs ---------- */
