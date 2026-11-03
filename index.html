@@ -344,6 +344,9 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 .ddpw{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:2px 0 10px}
 .ddpev{margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
 .ddpev .cv{height:190px}
+.cqd{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
+@media (max-width:860px){.cqd{grid-template-columns:1fr}}
+.cqd .cv{height:170px}
 .ddpb .pz{border-top:1px dashed var(--line);padding-top:8px;font-size:13px;color:var(--ink-2)}
 .ddpb .pz b{color:var(--ink)}
 @media (max-width:860px){.ddpg{grid-template-columns:1fr}}
@@ -761,7 +764,17 @@ function renderCode(){
     <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
     <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
   </div>
-  ${(()=>{const G0=leadLines(filtered(false)),G=winLines(G0),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))),t=esc(R.codes.join(", "));return `<div class="ddpw" style="margin-top:4px"><span class="flabel">Promedio de los últimos</span>${winSeg("cqWin")}</div><div>${ddpHTML(G,`Demora general y de ${t} · facturas de ${winTxt(G0)}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas en el período elegido (cambialo en Demora de facturación).</div>'}</div>`})()}
+  ${(()=>{const G0=leadLines(filtered(false)),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))),t=esc(R.codes.join(", ")),dd=R.rows.some(isDDP);
+    const tag=dd?'<span class="tipo" style="--c:var(--s2)">DDP</span>':'<span class="tipo" style="--c:var(--s1)">Normal</span>';
+    const head=`<div class="ddpw" style="margin-top:4px"><span class="flabel">Demora de los últimos</span>${winSeg("cqWin")}<span class="hint">Facturas de ${winTxt(G0)}</span></div>`;
+    if(!LL.length)return head+`<div class="ddpb" style="--c:var(${dd?"--s2":"--s1"})"><h3>Demora de ${t} ${tag}</h3><span class="ds">Sin líneas facturadas en el período elegido.</span></div>`;
+    const v=LL.map(x=>x.lead),p=avg(v),pl=x=>fD1(x)+" d",u=LL.reduce((a,x)=>a+x.u,0);
+    return head+`<div class="cqd"><div class="ddpb" style="--c:var(${dd?"--s2":"--s1"})"><h3>Demora de ${t} ${tag}</h3><div class="dv">
+      <div><span class="dl">Pedido → factura</span><span class="dn">${pl(p)}</span></div>
+      <div><span class="dl">Pedido → llegada probable</span><span class="dn">${pl(p+LLEGA)}</span></div></div>
+      <span class="ds">${fmtN(LL.length)} línea${LL.length===1?"":"s"} facturada${LL.length===1?"":"s"} · ${fmtN(u)} u · ${fmtN(v.reduce((a,x)=>a+x,0))} días sumados ÷ ${fmtN(LL.length)} · mediana ${fD1(median(v))} d · mín. ${fmtN(Math.min(...v))} · máx. ${fmtN(Math.max(...v))}</span>
+      <span class="ds">Llegada probable = fecha de factura + ${LLEGA} días.</span></div>
+      <div class="ddpb" style="--c:var(${dd?"--s2":"--s1"})"><h3>Demora por ${LL.length>40?"mes de factura (promedio)":"factura"}</h3><div class="cv"><canvas id="cqEv"></canvas></div></div></div>`})()}
   <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th title="Fecha de factura + 2 días">Llegada prob.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
     L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
       const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
@@ -769,6 +782,14 @@ function renderCode(){
       return `<tr><td>${dt(x.fp)}</td><td class="code"><b>${esc(x.np)}</b></td><td class="code">${esc(x.item)}</td><td>${tipoTag(x.tipo)}</td><td class="code">${esc(x.pp)}${x.pf!==x.pp?` → <b>${esc(x.pf)}</b>`:""}</td><td class="r">${fmtN(x.q)}</td><td>${st}</td><td>${esc(estTxt(x.eRaw))}</td><td class="r">${d}</td><td class="code">${esc(x.nf)}</td><td>${dt(x.ff)}</td><td>${x.est==="facturado"?dt(addD(x.ff,LLEGA)):""}</td><td class="code">${esc([...x.cajas].join(", "))}</td><td class="r">${fmt$(x.vt)}</td><td class="cm">${esc(x.co)}</td></tr>`}).join("")
   }</tbody></table></div>
   <div class="hint">Días: en pendientes, los que lleva esperando desde el pedido; en facturadas, los que tardó desde el pedido hasta la factura.</div>`;
+  {const G0=leadLines(filtered(false)),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))).sort((a,b)=>a.ff-b.ff);
+   if(LL.length&&$("cqEv")){const c=R.rows.some(isDDP)?css("--s2"):css("--s1");let lab,val,nn;
+     if(LL.length>40){const M=[...new Set(LL.map(x=>fmk(x.ff)))].sort();lab=M.map(m=>MESES[+m.slice(5)-1]+" "+m.slice(2,4));val=M.map(m=>{const a=LL.filter(x=>fmk(x.ff)===m);return Math.round(avg(a.map(x=>x.lead))*10)/10});nn=M.map(m=>LL.filter(x=>fmk(x.ff)===m).length+" líneas")}
+     else{lab=LL.map(x=>dt(x.ff));val=LL.map(x=>x.lead);nn=LL.map(x=>`pedido ${x.np} del ${dt(x.fp)} · factura ${x.nf} · ${fmtN(x.u)} u`)}
+     const pr=avg(LL.map(x=>x.lead));
+     mk("cqEv",{type:"bar",data:{labels:lab,datasets:[{label:"Días a factura",data:val,backgroundColor:c,borderRadius:3,maxBarThickness:28,order:2},{type:"line",label:"Promedio",data:lab.map(()=>Math.round(pr*10)/10),borderColor:css("--ink-2"),borderDash:[4,4],borderWidth:1.5,pointRadius:0,order:1}]},
+       options:baseOpts({plugins:{...baseOpts().plugins,tooltip:{...baseOpts().plugins.tooltip,callbacks:{label:c=>c.datasetIndex?`Promedio: ${fD1(c.raw)} d`:`${fD1(c.raw)} d a factura · ${fD1(c.raw+LLEGA)} d a llegada`,afterLabel:c=>c.datasetIndex?"":nn[c.dataIndex]}}},
+         scales:{...baseOpts().scales,x:{...baseOpts().scales.x,ticks:{...baseOpts().scales.x.ticks,maxRotation:0,autoSkip:true}},y:{...baseOpts().scales.y,title:{display:true,text:"días",color:css("--muted"),font:{family:"IBM Plex Sans",size:11}}}}})})}}
   {const e=$("cqWin");if(e)e.querySelectorAll("button").forEach(b=>b.onclick=()=>setWin(+b.dataset.w))}
   $("cqClose").onclick=()=>{$("cq").value="";renderCode();$("cq").focus()};
 }
