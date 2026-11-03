@@ -341,6 +341,9 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 .ldavg .lc{font-size:13px;color:var(--ink-2);line-height:1.6}
 .cbuscar input{flex:1;min-width:180px;font:inherit;font-family:var(--f-mono);font-size:14px;padding:8px 12px;border:1.5px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
 .ddpg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ddpw{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:2px 0 10px}
+.ddpev{margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.ddpev .cv{height:190px}
 .ddpb .pz{border-top:1px dashed var(--line);padding-top:8px;font-size:13px;color:var(--ink-2)}
 .ddpb .pz b{color:var(--ink)}
 @media (max-width:860px){.ddpg{grid-template-columns:1fr}}
@@ -434,7 +437,9 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
   <section class="card" id="ldSec" aria-label="Demora de facturación">
     <div class="card-h"><div><h2>Demora de facturación</h2><div class="hint">Días entre la fecha del pedido y la fecha de la factura de Ford, por línea facturada (pedido + ítem + factura). Respeta los filtros de tipo y mes de arriba.</div></div></div>
     <div class="ldavg" id="ldAvg"></div>
+    <div class="ddpw"><span class="flabel">Promedio de los últimos</span><span class="seg" id="ldWin"><button data-w="1">1 mes</button><button data-w="2">2 meses</button><button data-w="3" class="on">3 meses</button><button data-w="4">4 meses</button><button data-w="0">Todo</button></span><span class="hint" id="ldWinTxt"></span></div>
     <div id="ldDdp"></div>
+    <div class="ddpev"><div class="ddph" style="margin-top:0"><h3>Evolución mes a mes de la demora</h3><span class="hint" id="ldEvTxt"></span></div><div class="legend" id="lgEv"></div><div class="cv"><canvas id="cLdEv"></canvas></div></div>
     <div class="botiles" id="ldTiles"></div>
     <div class="tbar"><input type="search" id="ldQ" placeholder="Buscar código (calcula los promedios de esa pieza)…" aria-label="Buscar código en demora"><span class="foot" id="ldCount"></span></div>
     <div class="tw" id="ldTw"></div>
@@ -616,6 +621,33 @@ const isDDP=r=>DDP.has(dkey(r.pp))||DDP.has(dkey(r.pf));
 const LLEGA=2; // llegada probable = fecha de factura + 2 días
 const addD=(d,n)=>d?new Date(d.getFullYear(),d.getMonth(),d.getDate()+n):null;
 // promedios pedido -> factura y pedido -> llegada probable: DDP, otras y todas
+// período de los promedios: últimos N meses completos por mes de factura (el mes en curso no entra)
+state.ldWin=3;
+const fmk=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+const curMk=()=>fmk(new Date());
+function winMonths(L){
+  const ms=[...new Set(L.map(x=>fmk(x.ff)))].filter(m=>m<curMk()).sort();
+  return state.ldWin?ms.slice(-state.ldWin):ms;
+}
+function winLines(L){const ms=new Set(winMonths(L));return L.filter(x=>ms.has(fmk(x.ff)))}
+function winTxt(L){const ms=winMonths(L);return ms.length?(ms.length===1?mesLbl(ms[0]):mesLbl(ms[0])+" a "+mesLbl(ms.at(-1))):"sin meses completos facturados"}
+function renderLdEv(L){
+  const ms=[...new Set(L.map(x=>fmk(x.ff)))].filter(m=>m<curMk()).sort().slice(-12),win=new Set(winMonths(L));
+  const ser=f=>ms.map(m=>{const a=L.filter(x=>fmk(x.ff)===m&&f(x));return a.length?Math.round(avg(a.map(x=>x.lead))*10)/10:null});
+  const n=f=>ms.map(m=>L.filter(x=>fmk(x.ff)===m&&f(x)).length);
+  const D=ser(x=>x.ddp),O=ser(x=>!x.ddp),nD=n(x=>x.ddp),nO=n(x=>!x.ddp);
+  $("ldEvTxt").textContent=ms.length?"Promedio pedido → factura de las líneas facturadas en cada mes (últimos "+ms.length+" meses completos). Llegada probable = +"+LLEGA+" días. Sombreado: meses del promedio.":"Sin meses completos facturados.";
+  const cD=css("--s2"),cO=css("--s1");
+  $("lgEv").innerHTML=`<span><i style="background:${cD}"></i>Piezas DDP</span><span><i style="background:${cO}"></i>Otras (no DDP)</span>`;
+  const shade={id:"shadeWin",beforeDatasetsDraw(ch){const {ctx,chartArea:a,scales:{x}}=ch;const idx=ms.map((m,i)=>win.has(m)?i:-1).filter(i=>i>=0);if(!idx.length||!a)return;
+    const w=ms.length>1?(x.getPixelForValue(1)-x.getPixelForValue(0)):a.width;const x0=Math.max(a.left,x.getPixelForValue(idx[0])-w/2),x1=Math.min(a.right,x.getPixelForValue(idx.at(-1))+w/2);
+    ctx.save();ctx.fillStyle=css("--accent-soft");ctx.fillRect(x0,a.top,x1-x0,a.bottom-a.top);ctx.restore()}};
+  const ds=(label,data,c,nn)=>({label,data,borderColor:c,backgroundColor:c,pointRadius:4,pointHoverRadius:6,borderWidth:2,tension:0,spanGaps:true,nn});
+  mk("cLdEv",{type:"line",data:{labels:ms.map(m=>MESES[+m.slice(5)-1]+" "+m.slice(2,4)),datasets:[ds("DDP",D,cD,nD),ds("No DDP",O,cO,nO)]},plugins:[shade],
+    options:baseOpts({plugins:{...baseOpts().plugins,tooltip:{...baseOpts().plugins.tooltip,callbacks:{label:c=>c.raw==null?`${c.dataset.label}: sin líneas`:`${c.dataset.label}: ${fD1(c.raw)} d a factura · ${fD1(c.raw+LLEGA)} d a llegada (${fmtN(c.dataset.nn[c.dataIndex])} líneas)`}}},
+      scales:{...baseOpts().scales,y:{...baseOpts().scales.y,title:{display:true,text:"días",color:css("--muted"),font:{family:"IBM Plex Sans",size:11}}}}})});
+}
+$("ldWin").querySelectorAll("button").forEach(b=>b.onclick=()=>{state.ldWin=+b.dataset.w;$("ldWin").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));renderLead();if(!$("codeSec").hidden)renderCode()});
 function ddpStats(L){
   const g=f=>{const a=L.filter(f),v=a.map(x=>x.lead);return {n:a.length,u:a.reduce((s,x)=>s+x.u,0),prom:avg(v),med:median(v),sum:v.reduce((s,x)=>s+x,0)}};
   return {ddp:g(x=>x.ddp),otr:g(x=>!x.ddp),tot:g(()=>true)};
@@ -658,10 +690,12 @@ function renderLead(){
     <div class="lc"><b>Cálculo:</b> ${fmtN(sumD)} días sumados ÷ ${fmtN(L.length)} líneas facturadas = <b>${fD1(avg(v))} días</b><br>
     Cada línea: fecha de factura − fecha de pedido. Ponderado por unidades (${fmtN(uT)} u): <b>${fD1(uw)} días</b>.<br>
     Pedidos del ${dt(L.reduce((a,x)=>x.fp<a?x.fp:a,L[0].fp))} al ${dt(L.reduce((a,x)=>x.fp>a?x.fp:a,L[0].fp))} · ${[...new Set(L.map(x=>x.tipo))].map(k=>TIPOS.find(t=>t.k===k).l).join(", ")}${state.mes==="all"?"":" · "+MESES_L[+state.mes.slice(5)-1]+" "+state.mes.slice(0,4)}</div>`;
-  {const q=state.ldQ,k=q.replace(/[^a-z0-9]/g,""),LQ=k?L.filter(x=>dkey(x.pp).toLowerCase().includes(k)||dkey(x.pf).toLowerCase().includes(k)):L;
+  {const LT=leadLines(filtered(false)),LW=winLines(LT);renderLdEv(LT);
+   $("ldWinTxt").textContent="Facturas de "+winTxt(LT)+" · meses completos por fecha de factura (el mes en curso y el filtro de mes de arriba no entran; el de tipo sí).";
+   const q=state.ldQ,k=q.replace(/[^a-z0-9]/g,""),LQ=k?LW.filter(x=>dkey(x.pp).toLowerCase().includes(k)||dkey(x.pf).toLowerCase().includes(k)):L;
    const cs=[...new Set(LQ.map(x=>x.pp))];
    const pt=cs.length===1?esc(cs[0]):`${fmtN(cs.length)} códigos con “${esc(q.toUpperCase())}”`;
-   $("ldDdp").innerHTML=ddpHTML(L,"Demora general: DDP y no DDP"+(k?(LQ.length?` <span class="hint">· ${pt} se muestra dentro de su recuadro</span>`:` <span class="hint">· “${esc(q.toUpperCase())}” sin líneas facturadas con estos filtros</span>`):""),k&&LQ.length?{t:pt,L:LQ}:null);}
+   $("ldDdp").innerHTML=ddpHTML(LW,"Demora general: DDP y no DDP"+(k?(LQ.length?` <span class="hint">· ${pt} se muestra dentro de su recuadro</span>`:` <span class="hint">· “${esc(q.toUpperCase())}” sin líneas facturadas en el período</span>`):""),k&&LQ.length?{t:pt,L:LQ}:null);}
   $("ldTiles").innerHTML=tiles.map(t=>`<div class="botile" style="--c:var(${t.c});cursor:default"><span class="bl">${t.l}</span><span class="bv">${t.v}</span><span class="bs">${t.s}</span></div>`).join("");
   let P=leadPieces(L);const q=state.ldQ;
   if(q){const k=q.replace(/[^a-z0-9]/g,"");P=P.filter(o=>o.c.toLowerCase().replace(/[^a-z0-9]/g,"").includes(k))}
@@ -723,7 +757,7 @@ function renderCode(){
     <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
     <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
   </div>
-  ${(()=>{const LL=leadLines(R.rows),G=leadLines(filtered(true)),t=esc(R.codes.join(", "));return `<div>${ddpHTML(G,`Demora general y de ${t}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas: no hay demora para calcular.</div>'}</div>`})()}
+  ${(()=>{const G0=leadLines(filtered(false)),G=winLines(G0),ms=new Set(winMonths(G0)),LL=leadLines(R.rows).filter(x=>ms.has(fmk(x.ff))),t=esc(R.codes.join(", "));return `<div>${ddpHTML(G,`Demora general y de ${t} · facturas de ${winTxt(G0)}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas en el período elegido (cambialo en Demora de facturación).</div>'}</div>`})()}
   <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th title="Fecha de factura + 2 días">Llegada prob.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
     L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
       const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
