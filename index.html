@@ -340,7 +340,9 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 .ldavg .lv{display:block;font-family:var(--f-display);font-weight:700;font-size:44px;line-height:1;color:var(--accent)}
 .ldavg .lc{font-size:13px;color:var(--ink-2);line-height:1.6}
 .cbuscar input{flex:1;min-width:180px;font:inherit;font-family:var(--f-mono);font-size:14px;padding:8px 12px;border:1.5px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
-.ddpg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ddpg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ddpb .pz{border-top:1px dashed var(--line);padding-top:8px;font-size:13px;color:var(--ink-2)}
+.ddpb .pz b{color:var(--ink)}
 @media (max-width:860px){.ddpg{grid-template-columns:1fr}}
 .ddpb{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:8px;min-width:0}
 .ddpb h3{margin:0;font-size:14px;font-weight:700;color:var(--ink)}
@@ -618,14 +620,16 @@ function ddpStats(L){
   const g=f=>{const a=L.filter(f),v=a.map(x=>x.lead);return {n:a.length,u:a.reduce((s,x)=>s+x.u,0),prom:avg(v),med:median(v),sum:v.reduce((s,x)=>s+x,0)}};
   return {ddp:g(x=>x.ddp),otr:g(x=>!x.ddp),tot:g(()=>true)};
 }
-function ddpHTML(L,titulo){
-  const S=ddpStats(L),pl=x=>x==null?"—":fD1(x)+" d",pa=x=>x==null?"—":fD1(x+LLEGA)+" d";
-  const box=(t,o,c)=>`<div class="ddpb" style="--c:var(${c})"><h3>${t}</h3><div class="dv">
+// L = líneas generales (todas las piezas); pz = {t: nombre, L: líneas de la pieza buscada} opcional
+function ddpHTML(L,titulo,pz){
+  const S=ddpStats(L),P=pz?ddpStats(pz.L):null,pl=x=>x==null?"—":fD1(x)+" d",pa=x=>x==null?"—":fD1(x+LLEGA)+" d";
+  const box=(t,o,p,c)=>`<div class="ddpb" style="--c:var(${c})"><h3>${t} · promedio general</h3><div class="dv">
     <div><span class="dl">Pedido → factura</span><span class="dn">${pl(o.prom)}</span></div>
     <div><span class="dl">Pedido → llegada probable</span><span class="dn">${pa(o.prom)}</span></div></div>
-    <span class="ds">${o.n?`${fmtN(o.n)} línea${o.n===1?"":"s"} facturada${o.n===1?"":"s"} · ${fmtN(o.u)} u · ${fmtN(o.sum)} días sumados ÷ ${fmtN(o.n)} · mediana ${fD1(o.med)} d`:"sin líneas facturadas"}</span></div>`;
+    <span class="ds">${o.n?`${fmtN(o.n)} línea${o.n===1?"":"s"} facturada${o.n===1?"":"s"} · ${fmtN(o.u)} u · ${fmtN(o.sum)} días sumados ÷ ${fmtN(o.n)} · mediana ${fD1(o.med)} d`:"sin líneas facturadas"}</span>
+    ${p&&p.n?`<div class="pz"><b>${pz.t}</b>: pedido → factura <b>${pl(p.prom)}</b> · llegada probable <b>${pa(p.prom)}</b> <span class="ds">(${fmtN(p.n)} línea${p.n===1?"":"s"})</span></div>`:""}</div>`;
   return `<div class="ddph"><h3>${titulo}</h3><span class="hint">Llegada probable = fecha de factura + ${LLEGA} días.${DDP.size?` ${fmtN(DDP.size)} piezas marcadas DDP en Cargar datos.`:" <b>No hay piezas DDP cargadas</b>: todas cuentan como “otras”."}</span></div>
-  <div class="ddpg">${box("Piezas DDP",S.ddp,"--s2")}${box("Otras piezas (no DDP)",S.otr,"--s1")}${box("Todas",S.tot,"--accent")}</div>`;
+  <div class="ddpg">${box("Piezas DDP",S.ddp,P&&P.ddp,"--s2")}${box("Otras piezas (no DDP)",S.otr,P&&P.otr,"--s1")}</div>`;
 }
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),h=s.length>>1;return s.length%2?s[h]:(s[h-1]+s[h])/2};
@@ -656,7 +660,8 @@ function renderLead(){
     Pedidos del ${dt(L.reduce((a,x)=>x.fp<a?x.fp:a,L[0].fp))} al ${dt(L.reduce((a,x)=>x.fp>a?x.fp:a,L[0].fp))} · ${[...new Set(L.map(x=>x.tipo))].map(k=>TIPOS.find(t=>t.k===k).l).join(", ")}${state.mes==="all"?"":" · "+MESES_L[+state.mes.slice(5)-1]+" "+state.mes.slice(0,4)}</div>`;
   {const q=state.ldQ,k=q.replace(/[^a-z0-9]/g,""),LQ=k?L.filter(x=>dkey(x.pp).toLowerCase().includes(k)||dkey(x.pf).toLowerCase().includes(k)):L;
    const cs=[...new Set(LQ.map(x=>x.pp))];
-   $("ldDdp").innerHTML=k?(LQ.length?ddpHTML(LQ,`Promedios de ${cs.length===1?esc(cs[0]):fmtN(cs.length)+" códigos que contienen “"+esc(q.toUpperCase())+"”"}${cs.length===1?(LQ[0].ddp?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'):""}`):`<div class="ddph"><h3>“${esc(q.toUpperCase())}”: sin líneas facturadas con estos filtros</h3></div>`):ddpHTML(L,"Promedios DDP y no DDP");}
+   const pt=cs.length===1?esc(cs[0]):`${fmtN(cs.length)} códigos con “${esc(q.toUpperCase())}”`;
+   $("ldDdp").innerHTML=ddpHTML(L,"Demora general: DDP y no DDP"+(k?(LQ.length?` <span class="hint">· ${pt} se muestra dentro de su recuadro</span>`:` <span class="hint">· “${esc(q.toUpperCase())}” sin líneas facturadas con estos filtros</span>`):""),k&&LQ.length?{t:pt,L:LQ}:null);}
   $("ldTiles").innerHTML=tiles.map(t=>`<div class="botile" style="--c:var(${t.c});cursor:default"><span class="bl">${t.l}</span><span class="bv">${t.v}</span><span class="bs">${t.s}</span></div>`).join("");
   let P=leadPieces(L);const q=state.ldQ;
   if(q){const k=q.replace(/[^a-z0-9]/g,"");P=P.filter(o=>o.c.toLowerCase().replace(/[^a-z0-9]/g,"").includes(k))}
@@ -718,7 +723,7 @@ function renderCode(){
     <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
     <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
   </div>
-  ${(()=>{const LL=leadLines(R.rows);return LL.length?`<div>${ddpHTML(LL,`Demora de ${esc(R.codes.join(", "))}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'} · todo el Wings`)}</div>`:'<div class="hint">Esta pieza no tiene líneas facturadas: no hay demora para calcular.</div>'})()}
+  ${(()=>{const LL=leadLines(R.rows),G=leadLines(filtered(true)),t=esc(R.codes.join(", "));return `<div>${ddpHTML(G,`Demora general y de ${t}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'}`,LL.length?{t,L:LL}:null)}${LL.length?"":'<div class="hint">Esta pieza no tiene líneas facturadas: no hay demora para calcular.</div>'}</div>`})()}
   <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th title="Fecha de factura + 2 días">Llegada prob.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
     L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
       const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
