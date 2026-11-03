@@ -415,6 +415,14 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
     <div class="agekey"><span><span class="age hi">31+</span> más de 30 días</span><span><span class="age mid">15–30</span> entre 15 y 30 días</span><span><span class="age">≤14</span> hasta 14 días</span><span id="boCount"></span></div>
   </section>
 
+  <section class="card" id="ldSec" aria-label="Demora de facturación">
+    <div class="card-h"><div><h2>Demora de facturación</h2><div class="hint">Días entre la fecha del pedido y la fecha de la factura de Ford, por línea facturada (pedido + ítem + factura). Respeta los filtros de tipo y mes de arriba.</div></div></div>
+    <div class="botiles" id="ldTiles"></div>
+    <div class="tbar"><input type="search" id="ldQ" placeholder="Buscar código…" aria-label="Buscar código en demora"><span class="foot" id="ldCount"></span></div>
+    <div class="tw" id="ldTw"></div>
+    <div class="agekey"><span><span class="age hi">31+</span> más de 30 días</span><span><span class="age mid">15–30</span> entre 15 y 30 días</span><span><span class="age">≤14</span> hasta 14 días</span><span>Tocá un encabezado para ordenar.</span></div>
+  </section>
+
   <section class="grid">
     <div class="card">
       <div class="card-h"><div><h2>Pedidos cargados por mes</h2><div class="hint">Cantidad de N° de pedido, por tipo</div></div>
@@ -545,10 +553,10 @@ function filtered(withMonth=true){return ROWS.filter(r=>state.tipos.has(r.tipo)&
 function lineKey(r){return r.np+"|"+r.item+"|"+r.pp}
 function summarize(rs){
   const ped=new Set(),cod=new Set(),codF=new Set(),fac=new Set(),lines=new Set();
-  let uP=0,uF=0,uPe=0,uC=0,iP=0,iF=0,iPe=0,iC=0,bruto=0,leadS=0,leadN=0,subs=0;
+  let uP=0,uF=0,uPe=0,uC=0,iP=0,iF=0,iPe=0,iC=0,bruto=0,leadS=0,leadN=0,subs=0;const leadSeen=new Set();
   for(const r of rs){
     ped.add(r.np);cod.add(r.pp);lines.add(lineKey(r));uP+=r.qf;iP+=r.vt;
-    if(r.est==="facturado"){uF+=r.qf;iF+=r.vt;codF.add(r.pf);if(r.nf)fac.add(r.nf);bruto+=r.bruto;if(r.lead!=null){leadS+=r.lead;leadN++}}
+    if(r.est==="facturado"){uF+=r.qf;iF+=r.vt;codF.add(r.pf);if(r.nf)fac.add(r.nf);bruto+=r.bruto;if(r.lead!=null){const lk=lineKey(r)+"|"+r.nf;if(!leadSeen.has(lk)){leadSeen.add(lk);leadS+=r.lead;leadN++}}}
     else if(r.est==="pendiente"){uPe+=r.qf;iPe+=r.vt}else{uC+=r.qf;iC+=r.vt}
   }
   return {ped:ped.size,cod:cod.size,codF:codF.size,fac:fac.size,lines:lines.size,uP,uF,uPe,uC,iP,iF,iPe,iC,ahorro:bruto-iF,lead:leadN?leadS/leadN:null};
@@ -575,6 +583,52 @@ seg("segMes","segMes");seg("segTipo","segTipo");seg("segEst","segEst");seg("segT
 $("mes").onchange=e=>{state.mes=e.target.value;render()};
 $("reset").onclick=()=>{state.tipos=new Set(TIPOS.map(t=>t.k));state.mes="all";$("mes").value="all";state.q="";$("q").value="";buildChips();render()};
 $("q").oninput=e=>{state.q=e.target.value.toLowerCase();renderTable()};
+/* ---------- Demora de facturación ---------- */
+// una entrada por línea (pedido + ítem + código) y factura; Wings repite la línea por caja
+function leadLines(rs){
+  const m=new Map();
+  for(const r of rs){if(r.est!=="facturado"||r.lead==null)continue;const k=lineKey(r)+"|"+r.nf;let o=m.get(k);
+    if(!o){o={pp:r.pp,pf:r.pf,np:r.np,tipo:r.tipo,fp:r.fp,ff:r.ff,nf:r.nf,lead:r.lead,u:0};m.set(k,o)}o.u+=r.qf}
+  return [...m.values()];
+}
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),h=s.length>>1;return s.length%2?s[h]:(s[h-1]+s[h])/2};
+const fD1=x=>x==null?"—":x.toLocaleString("es-AR",{maximumFractionDigits:1});
+function leadPieces(L){
+  const m=new Map();
+  for(const x of L){let o=m.get(x.pp);if(!o){o={c:x.pp,v:[],u:0,uw:0,min:x.lead,max:x.lead,last:x,tipos:new Set(),peds:new Set()};m.set(x.pp,o)}
+    o.v.push(x.lead);o.u+=x.u;o.uw+=x.lead*x.u;o.min=Math.min(o.min,x.lead);o.max=Math.max(o.max,x.lead);o.tipos.add(x.tipo);o.peds.add(x.np);
+    if((x.ff||x.fp)>(o.last.ff||o.last.fp))o.last=x}
+  return [...m.values()].map(o=>Object.assign(o,{n:o.v.length,prom:avg(o.v),med:median(o.v)}));
+}
+state.ldQ="";state.ldSort={k:"prom",d:-1};
+const LDCOLS=[["Código","c","code"],["Pedidos","peds"],["Líneas fact.","n"],["Unid. fact.","u"],["Demora prom.","prom"],["Mediana","med"],["Mín.","min"],["Máx.","max"],["Última factura","last"],["Tipos","tipos"]];
+function renderLead(){
+  const L=leadLines(filtered(true));
+  if(!L.length){$("ldTiles").innerHTML="";$("ldTw").innerHTML='<div class="empty">No hay líneas facturadas con estos filtros.</div>';$("ldCount").textContent="";return}
+  const v=L.map(x=>x.lead),uw=L.reduce((a,x)=>a+x.lead*x.u,0)/L.reduce((a,x)=>a+x.u,0);
+  const sh=f=>pct(L.filter(f).length,L.length);
+  const tiles=[
+    {l:"Promedio general",v:fD1(avg(v))+" d",s:`${fmtN(L.length)} líneas facturadas · ponderado por unidades ${fD1(uw)} d`,c:"--accent"},
+    {l:"Mediana",v:fD1(median(v))+" d",s:`la mitad de las líneas se factura en ${fD1(median(v))} días o menos`,c:"--accent"},
+    {l:"Rápidas",v:fmtP(sh(x=>x.lead<=7)),s:"facturadas en 7 días o menos",c:"--good"},
+    {l:"Lentas",v:fmtP(sh(x=>x.lead>15)),s:`más de 15 días · máximo ${fmtN(Math.max(...v))} d`,c:"--crit"},
+    ...TIPOS.filter(t=>state.tipos.has(t.k)).map(t=>{const a=L.filter(x=>x.tipo===t.k).map(x=>x.lead);return {l:"Promedio "+t.l,v:a.length?fD1(avg(a))+" d":"—",s:a.length?`${fmtN(a.length)} línea${a.length===1?"":"s"} · mediana ${fD1(median(a))} d`:"sin líneas facturadas",c:t.v}})];
+  $("ldTiles").innerHTML=tiles.map(t=>`<div class="botile" style="--c:var(${t.c});cursor:default"><span class="bl">${t.l}</span><span class="bv">${t.v}</span><span class="bs">${t.s}</span></div>`).join("");
+  let P=leadPieces(L);const q=state.ldQ;
+  if(q){const k=q.replace(/[^a-z0-9]/g,"");P=P.filter(o=>o.c.toLowerCase().replace(/[^a-z0-9]/g,"").includes(k))}
+  const s=state.ldSort,val=o=>s.k==="last"?+(o.last.ff||o.last.fp):s.k==="peds"?o.peds.size:s.k==="tipos"?[...o.tipos].join():o[s.k];
+  P.sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*s.d||b.n-a.n});
+  $("ldCount").textContent=fmtN(P.length)+" códigos";
+  if(!P.length){$("ldTw").innerHTML='<div class="empty">Ningún código coincide.</div>';return}
+  const cell=d=>`<span class="age ${ageCls(d)}">${fD1(d)}</span>`;
+  $("ldTw").innerHTML=`<table><thead><tr>${LDCOLS.map(c=>`<th data-k="${c[1]}"${["Código","Última factura","Tipos"].includes(c[0])?"":' class="r"'}>${c[0]}${s.k===c[1]?(s.d>0?" ▲":" ▼"):""}</th>`).join("")}</tr></thead><tbody>`+
+    P.slice(0,800).map(o=>`<tr><td class="code">${esc(o.c)}</td><td class="r">${fmtN(o.peds.size)}</td><td class="r">${fmtN(o.n)}</td><td class="r">${fmtN(o.u)}</td><td class="r"><b>${cell(o.prom)}</b></td><td class="r">${fD1(o.med)}</td><td class="r">${fmtN(o.min)}</td><td class="r">${fmtN(o.max)}</td><td>${esc(o.last.nf)} · ${dt(o.last.ff)} <span style="color:var(--muted)">(${o.last.lead} d, ped. ${esc(o.last.np)})</span></td><td>${[...o.tipos].map(tipoTag).join(" ")}</td></tr>`).join("")+"</tbody></table>"+
+    (P.length>800?`<div class="foot" style="padding:8px">Se muestran 800 de ${fmtN(P.length)}; buscá el código para ver el resto.</div>`:"");
+  $("ldTw").querySelectorAll("th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;state.ldSort={k,d:state.ldSort.k===k?-state.ldSort.d:(k==="c"||k==="tipos"?1:-1)};renderLead()});
+}
+$("ldQ").oninput=e=>{state.ldQ=e.target.value.toLowerCase().trim();renderLead()};
+
 /* ---------- Buscador de código ---------- */
 const ckey=v=>String(v??"").toUpperCase().replace(/[^A-Z0-9]/g,"");
 function codeLines(q){
@@ -891,6 +945,7 @@ function render(){
   renderKPIs(S);
   renderResumen();
   renderBO();
+  renderLead();
   if(window.Chart)renderCharts();
   renderTable();
 }
@@ -1179,6 +1234,14 @@ async function makeXLSX(){
     if(sp.rows.length&&sp.cols.some(c=>c[2]==="money")){const n=sp.rows.length+2;const tr=s.getRow(n);tr.getCell(1).value="Total";tr.getCell(1).font={bold:true};
       sp.cols.forEach((c,i)=>{if((c[2]==="money"||c[2]==="int")&&!/Días|Veces/.test(c[0])&&c[0]!=="Precio unit."&&c[0]!=="Último precio unit."){const cl=s.getColumn(i+1).letter;const cell=tr.getCell(i+1);cell.value={formula:`SUBTOTAL(9,${cl}2:${cl}${n-1})`};cell.numFmt=XF[c[2]];cell.font={bold:true}}})}
   }
+  // demora por pieza
+  {const LP=leadPieces(leadLines(D.rs)).sort((a,b)=>b.prom-a.prom);
+   const s=wb.addWorksheet("Demora por pieza",{views:[{state:"frozen",ySplit:1}]});
+   const LC=[["Código",o=>o.c,"text",22],["Pedidos",o=>o.peds.size,"int",9],["Líneas facturadas",o=>o.n,"int",10],["Unid. facturadas",o=>o.u,"int",10],["Demora promedio (días)",o=>Math.round(o.prom*10)/10,"dec",12],["Mediana (días)",o=>o.med,"dec",10],["Mínimo (días)",o=>o.min,"int",10],["Máximo (días)",o=>o.max,"int",10],["Última factura",o=>o.last.nf,"text",12],["Fecha últ. factura",o=>o.last.ff,"date",12],["Días últ. factura",o=>o.last.lead,"int",10],["Tipos",o=>[...o.tipos].map(tipoL).join(", "),"text",22]];
+   s.columns=LC.map(c=>({header:c[0],width:c[3],style:{numFmt:c[2]==="dec"?"0.0":c[2]==="text"?undefined:XF[c[2]]}}));xlsHeader(s.getRow(1));
+   LP.forEach(o=>s.addRow(LC.map(c=>c[2]==="dec"?c[1](o):xlsVal(c[1](o),c[2]))));
+   s.autoFilter={from:{row:1,column:1},to:{row:1,column:LC.length}};
+   const L=leadLines(D.rs);if(L.length){const r=s.addRow([]);const t=s.addRow(["Promedio general (por línea)",null,L.length,L.reduce((a,x)=>a+x.u,0),Math.round(avg(L.map(x=>x.lead))*10)/10,median(L.map(x=>x.lead))]);t.font={bold:true};t.getCell(5).numFmt="0.0";t.getCell(6).numFmt="0.0"}}
   // detalle de líneas
   const dl=wb.addWorksheet("Detalle líneas",{views:[{state:"frozen",ySplit:1}]});
   const DC=[["Fecha pedido",r=>r.fp,"datetime",16],["Mes",r=>mesL(r.mk),"text",15],["N° pedido",r=>r.np,"text",11],["Tipo",r=>tipoL(r.tipo),"text",10],["Item",r=>r.item,"text",6],["Pieza pedida",r=>r.pp,"text",22],["Pieza facturada",r=>r.pf,"text",22],["Unid.",r=>r.qf,"int",7],["Precio unit.",r=>r.pu,"money",14],["Descuento",r=>r.desc/100,"pct",10],["Importe",r=>r.vt,"money",15],["Estado",r=>STL[r.est],"text",11],["Estado Ford",r=>estTxt(r.eRaw),"text",22],["Caja",r=>r.caja,"text",10],["N° factura",r=>r.nf,"text",10],["Fecha factura",r=>r.ff,"date",12],["Días a factura",r=>r.lead,"int",10],["VIN",r=>r.vin,"text",20],["Comentario",r=>r.co,"text",28]];
