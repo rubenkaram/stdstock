@@ -340,6 +340,16 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
 .ldavg .lv{display:block;font-family:var(--f-display);font-weight:700;font-size:44px;line-height:1;color:var(--accent)}
 .ldavg .lc{font-size:13px;color:var(--ink-2);line-height:1.6}
 .cbuscar input{flex:1;min-width:180px;font:inherit;font-family:var(--f-mono);font-size:14px;padding:8px 12px;border:1.5px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--ink)}
+.ddpg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:860px){.ddpg{grid-template-columns:1fr}}
+.ddpb{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:8px;min-width:0}
+.ddpb h3{margin:0;font-size:14px;font-weight:700;color:var(--ink)}
+.ddpb .dv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ddpb .dl{display:block;font-size:12px;color:var(--ink-2)}
+.ddpb .dn{display:block;font-family:var(--f-display);font-weight:700;font-size:28px;line-height:1.1;color:var(--ink)}
+.ddpb .ds{font-size:12px;color:var(--muted)}
+.ddph{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;margin:4px 0 8px}
+.ddph h3{margin:0;font-size:15px}
 .cq-h{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px}
 .cq-h h2{margin:0}
 .cq-st{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -422,8 +432,9 @@ tr.sub table td{border-bottom:1px solid var(--line);background:transparent;paddi
   <section class="card" id="ldSec" aria-label="Demora de facturación">
     <div class="card-h"><div><h2>Demora de facturación</h2><div class="hint">Días entre la fecha del pedido y la fecha de la factura de Ford, por línea facturada (pedido + ítem + factura). Respeta los filtros de tipo y mes de arriba.</div></div></div>
     <div class="ldavg" id="ldAvg"></div>
+    <div id="ldDdp"></div>
     <div class="botiles" id="ldTiles"></div>
-    <div class="tbar"><input type="search" id="ldQ" placeholder="Buscar código…" aria-label="Buscar código en demora"><span class="foot" id="ldCount"></span></div>
+    <div class="tbar"><input type="search" id="ldQ" placeholder="Buscar código (calcula los promedios de esa pieza)…" aria-label="Buscar código en demora"><span class="foot" id="ldCount"></span></div>
     <div class="tw" id="ldTw"></div>
     <div class="agekey"><span><span class="age hi">31+</span> más de 30 días</span><span><span class="age mid">15–30</span> entre 15 y 30 días</span><span><span class="age">≤14</span> hasta 14 días</span><span>Tocá un encabezado para ordenar.</span></div>
   </section>
@@ -593,24 +604,44 @@ $("q").oninput=e=>{state.q=e.target.value.toLowerCase();renderTable()};
 function leadLines(rs){
   const m=new Map();
   for(const r of rs){if(r.est!=="facturado"||r.lead==null)continue;const k=lineKey(r)+"|"+r.nf;let o=m.get(k);
-    if(!o){o={pp:r.pp,pf:r.pf,np:r.np,tipo:r.tipo,fp:r.fp,ff:r.ff,nf:r.nf,lead:r.lead,u:0};m.set(k,o)}o.u+=r.qf}
+    if(!o){o={pp:r.pp,pf:r.pf,np:r.np,tipo:r.tipo,fp:r.fp,ff:r.ff,nf:r.nf,lead:r.lead,ddp:isDDP(r),u:0};m.set(k,o)}o.u+=r.qf}
   return [...m.values()];
+}
+// piezas DDP (las pasa la app; se comparan sin barras ni espacios, por código pedido o facturado)
+let DDP=new Set();
+const dkey=v=>String(v??"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+const isDDP=r=>DDP.has(dkey(r.pp))||DDP.has(dkey(r.pf));
+const LLEGA=2; // llegada probable = fecha de factura + 2 días
+const addD=(d,n)=>d?new Date(d.getFullYear(),d.getMonth(),d.getDate()+n):null;
+// promedios pedido -> factura y pedido -> llegada probable: DDP, otras y todas
+function ddpStats(L){
+  const g=f=>{const a=L.filter(f),v=a.map(x=>x.lead);return {n:a.length,u:a.reduce((s,x)=>s+x.u,0),prom:avg(v),med:median(v),sum:v.reduce((s,x)=>s+x,0)}};
+  return {ddp:g(x=>x.ddp),otr:g(x=>!x.ddp),tot:g(()=>true)};
+}
+function ddpHTML(L,titulo){
+  const S=ddpStats(L),pl=x=>x==null?"—":fD1(x)+" d",pa=x=>x==null?"—":fD1(x+LLEGA)+" d";
+  const box=(t,o,c)=>`<div class="ddpb" style="--c:var(${c})"><h3>${t}</h3><div class="dv">
+    <div><span class="dl">Pedido → factura</span><span class="dn">${pl(o.prom)}</span></div>
+    <div><span class="dl">Pedido → llegada probable</span><span class="dn">${pa(o.prom)}</span></div></div>
+    <span class="ds">${o.n?`${fmtN(o.n)} línea${o.n===1?"":"s"} facturada${o.n===1?"":"s"} · ${fmtN(o.u)} u · ${fmtN(o.sum)} días sumados ÷ ${fmtN(o.n)} · mediana ${fD1(o.med)} d`:"sin líneas facturadas"}</span></div>`;
+  return `<div class="ddph"><h3>${titulo}</h3><span class="hint">Llegada probable = fecha de factura + ${LLEGA} días.${DDP.size?` ${fmtN(DDP.size)} piezas marcadas DDP en Cargar datos.`:" <b>No hay piezas DDP cargadas</b>: todas cuentan como “otras”."}</span></div>
+  <div class="ddpg">${box("Piezas DDP",S.ddp,"--s2")}${box("Otras piezas (no DDP)",S.otr,"--s1")}${box("Todas",S.tot,"--accent")}</div>`;
 }
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),h=s.length>>1;return s.length%2?s[h]:(s[h-1]+s[h])/2};
 const fD1=x=>x==null?"—":x.toLocaleString("es-AR",{maximumFractionDigits:1});
 function leadPieces(L){
   const m=new Map();
-  for(const x of L){let o=m.get(x.pp);if(!o){o={c:x.pp,v:[],u:0,uw:0,min:x.lead,max:x.lead,last:x,tipos:new Set(),peds:new Set()};m.set(x.pp,o)}
+  for(const x of L){let o=m.get(x.pp);if(!o){o={c:x.pp,ddp:x.ddp,v:[],u:0,uw:0,min:x.lead,max:x.lead,last:x,tipos:new Set(),peds:new Set()};m.set(x.pp,o)}
     o.v.push(x.lead);o.u+=x.u;o.uw+=x.lead*x.u;o.min=Math.min(o.min,x.lead);o.max=Math.max(o.max,x.lead);o.tipos.add(x.tipo);o.peds.add(x.np);
     if((x.ff||x.fp)>(o.last.ff||o.last.fp))o.last=x}
-  return [...m.values()].map(o=>Object.assign(o,{n:o.v.length,prom:avg(o.v),med:median(o.v)}));
+  return [...m.values()].map(o=>Object.assign(o,{n:o.v.length,prom:avg(o.v),lleg:avg(o.v)+LLEGA,med:median(o.v)}));
 }
 state.ldQ="";state.ldSort={k:"prom",d:-1};
-const LDCOLS=[["Código","c","code"],["Pedidos","peds"],["Líneas fact.","n"],["Unid. fact.","u"],["Demora prom.","prom"],["Mediana","med"],["Mín.","min"],["Máx.","max"],["Última factura","last"],["Tipos","tipos"]];
+const LDCOLS=[["Código","c","code"],["DDP","ddp"],["Pedidos","peds"],["Líneas fact.","n"],["Unid. fact.","u"],["Demora prom.","prom"],["Llegada prob.","lleg"],["Mediana","med"],["Mín.","min"],["Máx.","max"],["Última factura","last"],["Tipos","tipos"]];
 function renderLead(){
   const L=leadLines(filtered(true));
-  if(!L.length){$("ldAvg").innerHTML="";$("ldTiles").innerHTML="";$("ldTw").innerHTML='<div class="empty">No hay líneas facturadas con estos filtros.</div>';$("ldCount").textContent="";return}
+  if(!L.length){$("ldAvg").innerHTML="";$("ldDdp").innerHTML="";$("ldTiles").innerHTML="";$("ldTw").innerHTML='<div class="empty">No hay líneas facturadas con estos filtros.</div>';$("ldCount").textContent="";return}
   const v=L.map(x=>x.lead),uw=L.reduce((a,x)=>a+x.lead*x.u,0)/L.reduce((a,x)=>a+x.u,0);
   const sh=f=>pct(L.filter(f).length,L.length);
   const tiles=[
@@ -623,16 +654,19 @@ function renderLead(){
     <div class="lc"><b>Cálculo:</b> ${fmtN(sumD)} días sumados ÷ ${fmtN(L.length)} líneas facturadas = <b>${fD1(avg(v))} días</b><br>
     Cada línea: fecha de factura − fecha de pedido. Ponderado por unidades (${fmtN(uT)} u): <b>${fD1(uw)} días</b>.<br>
     Pedidos del ${dt(L.reduce((a,x)=>x.fp<a?x.fp:a,L[0].fp))} al ${dt(L.reduce((a,x)=>x.fp>a?x.fp:a,L[0].fp))} · ${[...new Set(L.map(x=>x.tipo))].map(k=>TIPOS.find(t=>t.k===k).l).join(", ")}${state.mes==="all"?"":" · "+MESES_L[+state.mes.slice(5)-1]+" "+state.mes.slice(0,4)}</div>`;
+  {const q=state.ldQ,k=q.replace(/[^a-z0-9]/g,""),LQ=k?L.filter(x=>dkey(x.pp).toLowerCase().includes(k)||dkey(x.pf).toLowerCase().includes(k)):L;
+   const cs=[...new Set(LQ.map(x=>x.pp))];
+   $("ldDdp").innerHTML=k?(LQ.length?ddpHTML(LQ,`Promedios de ${cs.length===1?esc(cs[0]):fmtN(cs.length)+" códigos que contienen “"+esc(q.toUpperCase())+"”"}${cs.length===1?(LQ[0].ddp?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'):""}`):`<div class="ddph"><h3>“${esc(q.toUpperCase())}”: sin líneas facturadas con estos filtros</h3></div>`):ddpHTML(L,"Promedios DDP y no DDP");}
   $("ldTiles").innerHTML=tiles.map(t=>`<div class="botile" style="--c:var(${t.c});cursor:default"><span class="bl">${t.l}</span><span class="bv">${t.v}</span><span class="bs">${t.s}</span></div>`).join("");
   let P=leadPieces(L);const q=state.ldQ;
   if(q){const k=q.replace(/[^a-z0-9]/g,"");P=P.filter(o=>o.c.toLowerCase().replace(/[^a-z0-9]/g,"").includes(k))}
-  const s=state.ldSort,val=o=>s.k==="last"?+(o.last.ff||o.last.fp):s.k==="peds"?o.peds.size:s.k==="tipos"?[...o.tipos].join():o[s.k];
+  const s=state.ldSort,val=o=>s.k==="last"?+(o.last.ff||o.last.fp):s.k==="peds"?o.peds.size:s.k==="tipos"?[...o.tipos].join():s.k==="ddp"?+o.ddp:o[s.k];
   P.sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*s.d||b.n-a.n});
   $("ldCount").textContent=fmtN(P.length)+" códigos";
   if(!P.length){$("ldTw").innerHTML='<div class="empty">Ningún código coincide.</div>';return}
   const cell=d=>`<span class="age ${ageCls(d)}">${fD1(d)}</span>`;
-  $("ldTw").innerHTML=`<table><thead><tr>${LDCOLS.map(c=>`<th data-k="${c[1]}"${["Código","Última factura","Tipos"].includes(c[0])?"":' class="r"'}>${c[0]}${s.k===c[1]?(s.d>0?" ▲":" ▼"):""}</th>`).join("")}</tr></thead><tbody>`+
-    P.slice(0,800).map(o=>`<tr><td class="code">${esc(o.c)}</td><td class="r">${fmtN(o.peds.size)}</td><td class="r">${fmtN(o.n)}</td><td class="r">${fmtN(o.u)}</td><td class="r"><b>${cell(o.prom)}</b></td><td class="r">${fD1(o.med)}</td><td class="r">${fmtN(o.min)}</td><td class="r">${fmtN(o.max)}</td><td>${esc(o.last.nf)} · ${dt(o.last.ff)} <span style="color:var(--muted)">(${o.last.lead} d, ped. ${esc(o.last.np)})</span></td><td>${[...o.tipos].map(tipoTag).join(" ")}</td></tr>`).join("")+"</tbody></table>"+
+  $("ldTw").innerHTML=`<table><thead><tr>${LDCOLS.map(c=>`<th data-k="${c[1]}"${["Código","Última factura","Tipos","DDP"].includes(c[0])?"":' class="r"'}>${c[0]}${s.k===c[1]?(s.d>0?" ▲":" ▼"):""}</th>`).join("")}</tr></thead><tbody>`+
+    P.slice(0,800).map(o=>`<tr><td class="code">${esc(o.c)}</td><td>${o.ddp?'<span class="tipo" style="--c:var(--s2)">DDP</span>':""}</td><td class="r">${fmtN(o.peds.size)}</td><td class="r">${fmtN(o.n)}</td><td class="r">${fmtN(o.u)}</td><td class="r"><b>${cell(o.prom)}</b></td><td class="r">${fD1(o.lleg)}</td><td class="r">${fD1(o.med)}</td><td class="r">${fmtN(o.min)}</td><td class="r">${fmtN(o.max)}</td><td>${esc(o.last.nf)} · ${dt(o.last.ff)} <span style="color:var(--muted)">(${o.last.lead} d, ped. ${esc(o.last.np)})</span></td><td>${[...o.tipos].map(tipoTag).join(" ")}</td></tr>`).join("")+"</tbody></table>"+
     (P.length>800?`<div class="foot" style="padding:8px">Se muestran 800 de ${fmtN(P.length)}; buscá el código para ver el resto.</div>`:"");
   $("ldTw").querySelectorAll("th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;state.ldSort={k,d:state.ldSort.k===k?-state.ldSort.d:(k==="c"||k==="tipos"?1:-1)};renderLead()});
 }
@@ -684,11 +718,12 @@ function renderCode(){
     <div><div class="l">Pendientes</div><div class="v"${uP?' style="color:var(--crit-ink)"':""}>${fmtN(uP)}</div><div class="n">${oldP?daysOld(oldP.fp)+" días la más vieja":"—"}</div></div>
     <div><div class="l">Canceladas</div><div class="v">${fmtN(uC)}</div></div>
   </div>
-  <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
+  ${(()=>{const LL=leadLines(R.rows);return LL.length?`<div>${ddpHTML(LL,`Demora de ${esc(R.codes.join(", "))}${LL.some(x=>x.ddp)?' <span class="tipo" style="--c:var(--s2)">DDP</span>':' <span class="hint">(no DDP)</span>'} · todo el Wings`)}</div>`:'<div class="hint">Esta pieza no tiene líneas facturadas: no hay demora para calcular.</div>'})()}
+  <div class="tw"><table><thead><tr><th>Fecha pedido</th><th>N° pedido</th><th>Ítem</th><th>Tipo</th><th>Código</th><th class="r">Unid.</th><th>Situación</th><th>Estado Ford</th><th class="r">Días</th><th>Factura</th><th>Fecha fact.</th><th title="Fecha de factura + 2 días">Llegada prob.</th><th>Caja</th><th class="r">Importe</th><th>Comentario</th></tr></thead><tbody>${
     L.map(x=>{const cat=x.est==="pendiente"?BOCAT[boCat(x)]:null;
       const st=cat?`<span class="pill"><i style="background:var(${cat.v})"></i>${cat.l}</span>`:stPill(x.est);
       const d=cat?`<span class="age ${ageCls(daysOld(x.fp))}">${daysOld(x.fp)}</span>`:x.lead!=null?`<span title="Días desde el pedido hasta la factura">${x.lead}</span>`:"";
-      return `<tr><td>${dt(x.fp)}</td><td class="code"><b>${esc(x.np)}</b></td><td class="code">${esc(x.item)}</td><td>${tipoTag(x.tipo)}</td><td class="code">${esc(x.pp)}${x.pf!==x.pp?` → <b>${esc(x.pf)}</b>`:""}</td><td class="r">${fmtN(x.q)}</td><td>${st}</td><td>${esc(estTxt(x.eRaw))}</td><td class="r">${d}</td><td class="code">${esc(x.nf)}</td><td>${dt(x.ff)}</td><td class="code">${esc([...x.cajas].join(", "))}</td><td class="r">${fmt$(x.vt)}</td><td class="cm">${esc(x.co)}</td></tr>`}).join("")
+      return `<tr><td>${dt(x.fp)}</td><td class="code"><b>${esc(x.np)}</b></td><td class="code">${esc(x.item)}</td><td>${tipoTag(x.tipo)}</td><td class="code">${esc(x.pp)}${x.pf!==x.pp?` → <b>${esc(x.pf)}</b>`:""}</td><td class="r">${fmtN(x.q)}</td><td>${st}</td><td>${esc(estTxt(x.eRaw))}</td><td class="r">${d}</td><td class="code">${esc(x.nf)}</td><td>${dt(x.ff)}</td><td>${x.est==="facturado"?dt(addD(x.ff,LLEGA)):""}</td><td class="code">${esc([...x.cajas].join(", "))}</td><td class="r">${fmt$(x.vt)}</td><td class="cm">${esc(x.co)}</td></tr>`}).join("")
   }</tbody></table></div>
   <div class="hint">Días: en pendientes, los que lleva esperando desde el pedido; en facturadas, los que tardó desde el pedido hasta la factura.</div>`;
   $("cqClose").onclick=()=>{$("cq").value="";renderCode();$("cq").focus()};
@@ -1246,11 +1281,13 @@ async function makeXLSX(){
   // demora por pieza
   {const LP=leadPieces(leadLines(D.rs)).sort((a,b)=>b.prom-a.prom);
    const s=wb.addWorksheet("Demora por pieza",{views:[{state:"frozen",ySplit:1}]});
-   const LC=[["Código",o=>o.c,"text",22],["Pedidos",o=>o.peds.size,"int",9],["Líneas facturadas",o=>o.n,"int",10],["Unid. facturadas",o=>o.u,"int",10],["Demora promedio (días)",o=>Math.round(o.prom*10)/10,"dec",12],["Mediana (días)",o=>o.med,"dec",10],["Mínimo (días)",o=>o.min,"int",10],["Máximo (días)",o=>o.max,"int",10],["Última factura",o=>o.last.nf,"text",12],["Fecha últ. factura",o=>o.last.ff,"date",12],["Días últ. factura",o=>o.last.lead,"int",10],["Tipos",o=>[...o.tipos].map(tipoL).join(", "),"text",22]];
+   const LC=[["Código",o=>o.c,"text",22],["DDP",o=>o.ddp?"DDP":"","text",6],["Pedidos",o=>o.peds.size,"int",9],["Líneas facturadas",o=>o.n,"int",10],["Unid. facturadas",o=>o.u,"int",10],["Demora promedio (días)",o=>Math.round(o.prom*10)/10,"dec",12],["Llegada probable prom. (días)",o=>Math.round(o.lleg*10)/10,"dec",12],["Mediana (días)",o=>o.med,"dec",10],["Mínimo (días)",o=>o.min,"int",10],["Máximo (días)",o=>o.max,"int",10],["Última factura",o=>o.last.nf,"text",12],["Fecha últ. factura",o=>o.last.ff,"date",12],["Días últ. factura",o=>o.last.lead,"int",10],["Tipos",o=>[...o.tipos].map(tipoL).join(", "),"text",22]];
    s.columns=LC.map(c=>({header:c[0],width:c[3],style:{numFmt:c[2]==="dec"?"0.0":c[2]==="text"?undefined:XF[c[2]]}}));xlsHeader(s.getRow(1));
    LP.forEach(o=>s.addRow(LC.map(c=>c[2]==="dec"?c[1](o):xlsVal(c[1](o),c[2]))));
    s.autoFilter={from:{row:1,column:1},to:{row:1,column:LC.length}};
-   const L=leadLines(D.rs);if(L.length){const r=s.addRow([]);const t=s.addRow(["Promedio general (por línea)",null,L.length,L.reduce((a,x)=>a+x.u,0),Math.round(avg(L.map(x=>x.lead))*10)/10,median(L.map(x=>x.lead))]);t.font={bold:true};t.getCell(5).numFmt="0.0";t.getCell(6).numFmt="0.0"}}
+   const L=leadLines(D.rs);if(L.length){s.addRow([]);const SS=ddpStats(L);
+     [["Promedio DDP (por línea)",SS.ddp],["Promedio no DDP (por línea)",SS.otr],["Promedio general (por línea)",SS.tot]].forEach(([t,o])=>{if(!o.n)return;const rw=s.addRow([t,null,null,o.n,o.u,Math.round(o.prom*10)/10,Math.round((o.prom+LLEGA)*10)/10,o.med]);rw.font={bold:true};[6,7,8].forEach(i=>rw.getCell(i).numFmt="0.0")});
+     s.addRow(["Llegada probable = fecha de factura + "+LLEGA+" días"])}}
   // detalle de líneas
   const dl=wb.addWorksheet("Detalle líneas",{views:[{state:"frozen",ySplit:1}]});
   const DC=[["Fecha pedido",r=>r.fp,"datetime",16],["Mes",r=>mesL(r.mk),"text",15],["N° pedido",r=>r.np,"text",11],["Tipo",r=>tipoL(r.tipo),"text",10],["Item",r=>r.item,"text",6],["Pieza pedida",r=>r.pp,"text",22],["Pieza facturada",r=>r.pf,"text",22],["Unid.",r=>r.qf,"int",7],["Precio unit.",r=>r.pu,"money",14],["Descuento",r=>r.desc/100,"pct",10],["Importe",r=>r.vt,"money",15],["Estado",r=>STL[r.est],"text",11],["Estado Ford",r=>estTxt(r.eRaw),"text",22],["Caja",r=>r.caja,"text",10],["N° factura",r=>r.nf,"text",10],["Fecha factura",r=>r.ff,"date",12],["Días a factura",r=>r.lead,"int",10],["VIN",r=>r.vin,"text",20],["Comentario",r=>r.co,"text",28]];
@@ -1426,7 +1463,7 @@ $("btnBoXls").onclick=e=>runBoExport(e.currentTarget,"xls");
 
 
 /* Integrado en Estándar Stock: los datos llegan desde la app (Wings guardado de la sucursal) */
-window.__fordLoad=(aoa,name,eyebrow)=>{try{if(eyebrow)document.querySelector(".eyebrow").textContent=eyebrow;if(!aoa){ROWS=[];showDash(false);return}load(aoa,name)}catch(e){showDash(false);toast(e.message)}};
+window.__fordLoad=(aoa,name,eyebrow,ddp)=>{try{DDP=new Set((ddp||[]).map(dkey).filter(Boolean));if(eyebrow)document.querySelector(".eyebrow").textContent=eyebrow;if(!aoa){ROWS=[];showDash(false);return}load(aoa,name)}catch(e){showDash(false);toast(e.message)}};
 showDash(false);
 </script>
 </template>
@@ -1965,7 +2002,7 @@ let db=null,dl=null;
 const S={D:{ventas:null,stock:null,wings:null,oq:null,ddp:null},cache:{},sucs:['La Rioja','Catamarca','Quick Lane'],sucMap:{'CASA CENTRAL':'La Rioja','QUICK LANE LA RIOJA':'Quick Lane','WINGS 60580':'Quick Lane'},sucCfg:{'Quick Lane':{transf:true}},finalsBy:{},base:null,stdBy:{},P:Object.assign({},DEFAULT_PARAMS),finals:{},saved:[],res:null,K:null,
   tab:'sugerido',loading:true,noDb:false,pending:null,busy:false,
   ui:{view:'pedir',q:'',fam:'',sort:'$',dir:-1,stdQ:'',stdEst:'',candQ:'',openSaved:null,confirmDel:null,saveOpen:false,hq:''}};
-const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['vendidos','Más vendidos'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['control','Control de stock'],['fill','Percent Fill'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
+const TABS0=[['sugerido','Pedido sugerido'],['std','Estándar stock'],['informe','Informe'],['vendidos','Más vendidos'],['ford','Pedidos Ford'],['fyb','Filtros y bujías'],['depositos','Stock por depósito'],['stockact','Stock por actividad'],['control','Control de stock'],['fill','Percent Fill'],['historial','Historial'],['datos','Cargar datos'],['params','Parámetros']];
 const stdKey=()=>S.P.sucursal||'La Rioja';
 const ME=()=>window.__USER||null;
 const isAdmin=()=>!ME()||!!ME().admin;
@@ -2105,11 +2142,12 @@ function render(){
   const m=$('#main');
   if(S.loading){m.innerHTML='<div class="empty">Cargando datos guardados…</div>';return}
   if(!can(S.tab)){m.innerHTML='<div class="empty">Tu usuario no tiene acceso a ninguna sección. Pedile acceso al administrador.</div>';return}
-  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl,fill:vFill}[S.tab]||vSug;
+  const fn={usuarios:vUsers,sugerido:vSug,std:vStd,informe:vInf,historial:vHist,datos:vDatos,params:vParams,actividad:vAct2,depositos:vDepos,vendidos:vMv,fyb:vFyb,ford:vFord,control:vCtrl,fill:vFill,stockact:vStockAct}[S.tab]||vSug;
   m.innerHTML=fn();
   if(S.tab==='informe'){bindChart();fillCmp()}
   if(S.tab==='depositos')bindDepChart();
   if(S.tab==='ford')mountFord();
+  if(S.tab==='stockact')mountStockAct();
   if(S.tab==='fyb')loadFyb();
   if((S.tab==='usuarios'||(S.tab==='params'&&isAdmin()&&ME()))&&!S.usrs&&!S.usrsLoading)loadUsers();
   if(S.tab==='fill')bindPfChart();
@@ -2393,6 +2431,42 @@ function mvXls(){
   exportXlsx(`Mas vendidos ${m.sucs.map(sucAb).join('-')}${m.fams.length?' '+m.fams.length+' rubros':''} ${stamp()}.xlsx`,[{name:'Mas vendidos',rows}]);
 }
 
+/* ---------- Vista: Stock por actividad (herramienta stock-actividad.html en un iframe) ----------
+   Cada informe "Stock a costo > Detallado" cargado se guarda como dataset stockact-<fecha> (filas compactas)
+   y se lista en config/stockact. El repo es público: los datos no van en el html. */
+function vStockAct(){
+  return `<section class="panel" style="padding:0;overflow:hidden"><div id="actBox"><div class="empty">Cargando stock por actividad…</div></div></section>`;
+}
+const actId=p=>(p.emitido||p.file)+'|'+p.rows.length;
+async function actIndex(){const d=await db.doc('config/stockact').get();return d.exists?(d.data().snaps||[]):[]}
+window.__actSave=async p=>{
+  if(!db)throw new Error('sin conexión con la base');
+  const S1=[],A1=[],ix=(a,v)=>{let i=a.indexOf(v);if(i<0){a.push(v);i=a.length-1}return i};
+  const rows=p.rows.map(r=>[ix(S1,r.suc),ix(A1,r.act),r.code,r.ori,r.desc,r.ubi,r.s,r.cu,r.sc,r.pl,r.sp]);
+  const id=actId(p),doc='stockact-'+slug(id);
+  await writeDataset(doc,{emitido:p.emitido||'',file:p.file||'',S:S1,A:A1},rows);
+  const L=(await actIndex()).filter(x=>x.id!==id);
+  L.push({id,doc,emitido:p.emitido||'',file:p.file||'',n:rows.length,usuario:ME()?ME().email:'',fecha:new Date().toISOString()});
+  await db.doc('config/stockact').set({snaps:L});
+  logAct('Cargó stock por actividad',`${p.file||''} · emitido ${p.emitido||'?'} · ${rows.length} piezas`,'Todas');
+};
+window.__actDel=async id=>{
+  if(!db)return;const L=await actIndex(),x=L.find(o=>o.id===id);if(!x)return;
+  await readDataset(x.doc).catch(()=>null);await deleteDataset(x.doc);
+  await db.doc('config/stockact').set({snaps:L.filter(o=>o.id!==id)});
+  logAct('Eliminó stock por actividad',`emitido ${x.emitido||'?'}`,'Todas');
+};
+async function mountStockAct(){
+  const box=$('#actBox');if(!box)return;
+  const fr=document.createElement('iframe');fr.title='Stock por actividad';fr.src='stock-actividad.html';
+  fr.style.cssText='display:block;width:100%;height:calc(100vh - 150px);min-height:640px;border:0;background:var(--bg)';
+  let list=[];const dataP=(async()=>{try{if(!db)return;const L=await actIndex();
+    for(const x of L){const d=await readDataset(x.doc);if(d)list.push({emitido:d.meta.emitido,file:d.meta.file,rows:d.rows.map(r=>({suc:d.meta.S[r[0]],act:d.meta.A[r[1]],code:r[2],ori:r[3],desc:r[4],ubi:r[5],s:r[6],cu:r[7],sc:r[8],pl:r[9],sp:r[10]}))})}}
+    catch(e){toast('No se pudo leer el stock por actividad: '+(e.message||e.code))}})();
+  fr.addEventListener('load',async()=>{await dataP;try{fr.contentWindow.__actLoad(list)}catch(e){toast('No se pudo abrir Stock por actividad: '+e.message)}});
+  box.innerHTML='';box.appendChild(fr);
+}
+
 /* ---------- Vista: Pedidos Ford (herramienta BO/OD) ---------- */
 function vFord(){
   const w=S.D.wings&&!S.D.wings.meta.base?S.D.wings.meta:null;
@@ -2405,7 +2479,7 @@ async function mountFord(){
   if(!$('#fordBox')||S.P.sucursal!==suc||S.tab!=='ford')return;
   if(!d){box.innerHTML=`<div class="empty">${S.D.wings&&!S.D.wings.meta.base?'Los pedidos de Wings de esta sucursal se cargaron antes de esta versión: volvé a subir el archivo de Wings para ver el detalle.':'Todavía no hay pedidos de Wings guardados para '+esc(suc)+'.'}</div>`;return}
   const fr=document.createElement('iframe');fr.title='Pedidos de repuestos a Ford';fr.style.cssText='display:block;width:100%;height:calc(100vh - 150px);min-height:640px;border:0;border-top:1px solid var(--line);background:var(--bg)';
-  fr.addEventListener('load',()=>{try{fr.contentWindow.__fordLoad(d.rows,d.meta.fileName||'Wings',`Posventa · Repuestos · ${suc} · Wings ${d.meta.empresa||''}`)}catch(e){toast('No se pudo abrir el detalle de pedidos: '+e.message)}});
+  fr.addEventListener('load',()=>{try{fr.contentWindow.__fordLoad(d.rows,d.meta.fileName||'Wings',`Posventa · Repuestos · ${suc} · Wings ${d.meta.empresa||''}`,S.D.ddp?S.D.ddp.rows.map(r=>r[0]):[])}catch(e){toast('No se pudo abrir el detalle de pedidos: '+e.message)}});
   fr.srcdoc='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+document.getElementById('fordTpl').innerHTML+'</html>';box.innerHTML='';box.appendChild(fr);
 }
 
