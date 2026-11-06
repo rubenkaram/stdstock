@@ -170,6 +170,7 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
   <nav class="filters" aria-label="Filtros">
     <div class="fgroup"><span class="eyebrow">Sucursal</span><div class="chips" id="fSuc"></div></div>
     <div class="fgroup"><span class="eyebrow">Origen</span><div class="seg" id="fOri"></div></div>
+    <div class="fgroup" id="fTipoG" hidden><span class="eyebrow">Ver</span><div class="chips" id="fTipo"></div></div>
     <div class="fgroup"><span class="eyebrow">Actividad</span><div class="chips" id="fAct"></div></div>
   </nav>
 
@@ -313,7 +314,12 @@ const toDate = s => { const m = String(s||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4
 
 /* ---------- estado ---------- */
 let snaps = [];
-const sel = { snap:null, sucs:new Set(), ori:'ALL', acts:new Set(), metric:'sc' };
+const sel = { snap:null, sucs:new Set(), ori:'ALL', acts:new Set(), metric:'sc', verR:true, verH:false };
+/* herramientas especiales (lista que carga la app): no cuentan como stock de repuestos */
+let HERR = new Set();
+const hk = c => String(c ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9#]/g,'');
+const isHerr = r => r.herr === undefined ? (r.herr = HERR.has(hk(r.code))) : r.herr;
+const tipoOk = r => isHerr(r) ? sel.verH : sel.verR;
 const det = { q:'', f:'all', key:'sc', dir:-1, page:0, size:50 };
 const gSort = { key:'rank', dir:1 };
 const knownActs = new Set();
@@ -336,7 +342,8 @@ const current = () => (curSnap() || { rows:[] }).rows;
 function allSucs(){ return [...new Set(current().map(r => r.suc))].sort((a,b) => sucRank(a)-sucRank(b) || a.localeCompare(b)); }
 function allActs(){ return [...new Set(current().map(r => r.act))].sort((a,b) => actRank(a)-actRank(b) || a.localeCompare(b)); }
 function allOris(){ return new Set(current().map(r => r.ori)); }
-function filtered() { return current().filter(r => sel.sucs.has(r.suc) && sel.acts.has(r.act) && (sel.ori === 'ALL' || r.ori === sel.ori)); }
+function filtered() { return current().filter(r => sel.sucs.has(r.suc) && sel.acts.has(r.act) && (sel.ori === 'ALL' || r.ori === sel.ori) && (!HERR.size || tipoOk(r))); }
+function tipoLabel(){ return !HERR.size ? '' : sel.verR && sel.verH ? 'Repuestos + herramientas especiales' : sel.verH ? 'Solo herramientas especiales' : 'Solo repuestos (sin herramientas especiales)'; }
 function agg(items) {
   const a = { s:0, sc:0, sp:0, scInm:0 }, n = new Set();
   for (const r of items) { a.s += r.s; a.sc += r.sc; a.sp += r.sp; n.add(r.code); if (INMOV.has(r.act)) a.scInm += r.sc; }
@@ -354,7 +361,7 @@ function palette(light) {
 function colorOf(g, P) { P = P || palette(false); let i = actRank(g); if (i >= 50) i = 5 + allActs().filter(x => actRank(x) >= 50).indexOf(g); return P.a[Math.min(i, 7)]; }
 function snapLabel(){ const s = curSnap(); return s ? 'Stock emitido el ' + (s.emitido || '?') : ''; }
 function oriLabel(){ return sel.ori === 'ALL' ? 'Todos los orígenes' : (ORI[sel.ori] || sel.ori); }
-function filtLabel(){ return [snapLabel(), selSucs().join(' + '), oriLabel(), 'Actividad: ' + selActs().join(', ')]; }
+function filtLabel(){ return [snapLabel(), selSucs().join(' + '), oriLabel() + (HERR.size ? ' · ' + tipoLabel() : ''), 'Actividad: ' + selActs().join(', ')]; }
 
 /* ---------- UI ---------- */
 function showMsg(t){ const m = $('msg'); m.textContent = t; m.hidden = !t; }
@@ -380,15 +387,25 @@ function renderFilters() {
   [...oris].filter(o => o !== 'N' && o !== 'P').sort().forEach(o => oriOpts.push([o, (ORI[o] || 'Otro') + ' (' + o + ')']));
   $('fOri').innerHTML = oriOpts.map(([k,l]) => `<button type="button" aria-pressed="${sel.ori===k}" data-o="${esc(k)}">${esc(l)}</button>`).join('');
   $('fOri').querySelectorAll('button').forEach(b => b.onclick = () => { sel.ori = b.dataset.o; renderFilters(); render(); });
+  $('fTipoG').hidden = !HERR.size;
+  if (HERR.size) {
+    $('fTipo').innerHTML = chip('Repuestos', sel.verR, 'data-t="R"') + chip('Herramientas especiales', sel.verH, 'data-t="H"');
+    $('fTipo').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { const k = b.dataset.t === 'R' ? 'verR' : 'verH', o = k === 'verR' ? 'verH' : 'verR'; sel[k] = !sel[k]; if (!sel[k] && !sel[o]) sel[o] = true; det.page = 0; renderFilters(); render(); });
+  }
   $('fMetric').innerHTML = Object.entries(METRICS).map(([k,m]) => `<button type="button" aria-pressed="${sel.metric===k}" data-m="${k}">${esc(m.short)}</button>`).join('');
   $('fMetric').querySelectorAll('button').forEach(b => b.onclick = () => { sel.metric = b.dataset.m; renderFilters(); renderCharts(filtered()); });
 }
 
 /* ---------- KPIs ---------- */
+function herrNote() {
+  if (!HERR.size || sel.verH) return '';
+  const x = current().filter(r => sel.sucs.has(r.suc) && sel.acts.has(r.act) && (sel.ori === 'ALL' || r.ori === sel.ori) && isHerr(r));
+  return x.length ? ' · sin ' + nf0.format(new Set(x.map(r => r.code)).size) + ' herramientas (' + compact(x.reduce((s,r) => s + r.sc, 0), true) + ')' : '';
+}
 function renderKpis(items) {
   const a = agg(items), g = groupBy(items, r => r.act), viva = agg(g.get('VIVA') || []);
   const k = [
-    ['Stock a costo', money(a.sc), nf0.format(a.n) + ' códigos'],
+    ['Stock a costo', money(a.sc), nf0.format(a.n) + ' códigos' + herrNote()],
     ['Stock a precio de lista', money(a.sp), 'Margen potencial ' + pct(a.mg)],
     ['Stock en unidades', qty(a.s), ''],
     ['Stock vivo a costo', money(viva.sc), pct(a.sc ? viva.sc / a.sc : NaN) + ' del stock'],
@@ -492,7 +509,7 @@ function renderDetail(items) {
   const slice = rows.slice(det.page * det.size, (det.page + 1) * det.size);
   $('detSub').textContent = nf0.format(rows.length) + ' filas (código × sucursal) · ordenado por ' + DET_COLS.find(c => c[0] === det.key)[1].toLowerCase() + (det.dir < 0 ? ', mayor a menor' : ', menor a mayor');
   const th = DET_COLS.map(([k,l,n]) => `<th class="sort${n?' num':''}" data-k="${k}">${l}<span class="ar">${det.key===k?(det.dir>0?'▲':'▼'):''}</span></th>`).join('');
-  const body = slice.length ? slice.map(x => `<tr><td>${esc(x.code)}</td><td class="desc" title="${esc(x.desc)}">${esc(x.desc)}</td><td><span class="ori" title="${esc(ORI[x.ori]||'Otro')}">${esc(x.ori)}</span></td><td>${esc(x.ubi)||'<span class="muted">—</span>'}</td><td><span class="act"><i style="background:${colorOf(x.act)}"></i>${esc(x.act)}</span></td><td>${esc(x.suc)}</td>${cell('s',x)}${cell('cu',x)}${cell('sc',x)}${cell('pl',x)}${cell('sp',x)}</tr>`).join('') : `<tr><td colspan="${DET_COLS.length}" class="empty">No hay piezas con estos filtros.</td></tr>`;
+  const body = slice.length ? slice.map(x => `<tr><td>${esc(x.code)}${HERR.size && isHerr(x) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}</td><td class="desc" title="${esc(x.desc)}">${esc(x.desc)}</td><td><span class="ori" title="${esc(ORI[x.ori]||'Otro')}">${esc(x.ori)}</span></td><td>${esc(x.ubi)||'<span class="muted">—</span>'}</td><td><span class="act"><i style="background:${colorOf(x.act)}"></i>${esc(x.act)}</span></td><td>${esc(x.suc)}</td>${cell('s',x)}${cell('cu',x)}${cell('sc',x)}${cell('pl',x)}${cell('sp',x)}</tr>`).join('') : `<tr><td colspan="${DET_COLS.length}" class="empty">No hay piezas con estos filtros.</td></tr>`;
   $('detTable').innerHTML = `<table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
   $('detTable').querySelectorAll('th.sort').forEach(t => t.onclick = () => { const k = t.dataset.k; if (det.key === k) det.dir *= -1; else { det.key = k; det.dir = DET_COLS.find(c => c[0] === k)[2] ? -1 : 1; } det.page = 0; renderDetail(filtered()); });
   $('pager').innerHTML = `<button type="button" id="pPrev" ${det.page===0?'disabled':''}>Anterior</button><span>Página ${det.page+1} de ${pages}</span><button type="button" id="pNext" ${det.page>=pages-1?'disabled':''}>Siguiente</button>`;
@@ -579,7 +596,7 @@ async function exportXlsx() {
   XLSX.utils.book_append_sheet(wb, ws2, 'Por sucursal');
   const dr = detailRows(items);
   const ds = [['Código','Descripción','Origen','Ubicación','Actividad','Sucursal','Stock','Costo reposición unit.','Stock $ costo','Precio de lista unit.','Stock $ lista']];
-  dr.forEach(x => ds.push([x.code, x.desc, x.ori, x.ubi, x.act, x.suc, R2(x.s), R2(x.cu), R2(x.sc), R2(x.pl), R2(x.sp)]));
+  dr.forEach(x => ds.push([x.code + (HERR.size && isHerr(x) ? ' (HE)' : ''), x.desc, x.ori, x.ubi, x.act, x.suc, R2(x.s), R2(x.cu), R2(x.sc), R2(x.pl), R2(x.sp)]));
   const ws3 = XLSX.utils.aoa_to_sheet(ds);
   fmtCols(ws3, [null,null,null,null,null,null,QF,MF,MF,MF,MF], 1, ds.length - 1);
   ws3['!cols'] = [{wch:20},{wch:40},{wch:7},{wch:14},{wch:12},{wch:11},{wch:9},{wch:16},{wch:16},{wch:16},{wch:16}];
@@ -651,6 +668,12 @@ const rerender = () => { renderFilters(); render(); };
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender); } catch {}
 new MutationObserver(rerender).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
 // la app pasa las fechas guardadas en Supabase
+window.__actTools = (codes, ver) => {
+  HERR = new Set((codes || []).map(hk).filter(Boolean));
+  for (const s of snaps) for (const r of s.rows) delete r.herr;
+  if (ver) { sel.verR = ver.verR !== false; sel.verH = !!ver.verH; if (!sel.verR && !sel.verH) sel.verR = true; }
+  renderFilters(); render();
+};
 window.__actLoad = list => {
   window.__actLoading = false;
   for (const p of (list || [])) addSnap(p);
