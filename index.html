@@ -2669,8 +2669,8 @@ function vDepos(){
   const last=c=>{const fs=fechas.filter(f=>at(f,c));return [at(fs[fs.length-1],c),fs.length>1?at(fs[fs.length-2],c):null]};
   const delta=(a,b)=>{if(!b)return'<span class="faint">primera foto</span>';const d=a[k][met]-b[k][met],pc=b[k][met]?d/b[k][met]*100:0;return `<span style="color:${d>0?'var(--warn)':d<0?'var(--ok)':'var(--muted)'}">${d>0?'+':''}${M[1](d)} (${d>0?'+':''}${fN(pc,1)} %)</span> <span class="faint">vs ${fD(b.fecha)}</span>`};
   const orig=k==='N'?'origen N':k==='P'?'origen P':'todos los orígenes';
-  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Avanzado</i> (o el <i>Detallado</i>) con los tres depósitos: baja el <b>stockarg.txt</b> para OIC y además actualiza el stock de cada sucursal.</p></div>
-    <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label><button class="btn" data-act="oicTxt"${codes.length?'':' disabled'} title="Archivo de ancho fijo para OIC, de la última carga">stockarg.txt (OIC)</button><button class="btn" data-act="depoXls"${codes.length?'':' disabled'}>Planilla por depósito</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
+  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Avanzado</i> (o el <i>Detallado</i>) con los tres depósitos: al guardar baja los archivos marcados (Excel por depósito y/o <b>stockarg.txt</b> para OIC) y además actualiza el stock de cada sucursal.</p></div>
+    <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label>${depoOutChecks()}<button class="btn" data-act="depoGen"${codes.length?'':' disabled'} title="Genera los archivos marcados con la última carga">Generar</button><button class="btn" data-act="oicUp"${codes.length?'':' disabled'} title="Baja stockarg.txt y abre en esta PC el programa que lo sube al SFTP de OIC">Subir a OIC (SFTP)</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
     ${codes.length?`<div class="tiles">${codes.map(c=>{const [a,b]=last(c);return `<div class="tile"><div class="l">${esc(depName(c,a.nombre))} · ${esc(a.sucursal||a.sucAutologica)}</div><div class="v">${M[1](a[k][met])}</div><div class="n">${fN(a[k].items)} ítems · ${fN(a[k].u)} u · al ${fD(a.fecha)}</div><div class="n">${delta(a,b)}</div></div>`}).join('')}</div>`:`<div class="empty">Todavía no hay fotos de depósitos. Cargá el informe de stock para empezar el registro.</div>`}
   </section>
   ${codes.length?`<section class="panel"><div class="panel-h"><h3>Evolución</h3><select id="depMet">${Object.entries(DEP_MET).map(([x,o])=>`<option value="${x}"${x===met?' selected':''}>${o[0]}</option>`).join('')}</select></div>
@@ -2726,12 +2726,23 @@ function oicTxt(deps){
   out.push('DOPF0000000000000000');
   return {txt:out.join('\r\n')+'\r\n',lines,u};
 }
-function oicTxtDl(deps){const r=oicTxt(deps);if(!r.lines){toast('No hay piezas para armar stockarg.txt.');return}
+function oicTxtDl(deps){const r=oicTxt(deps);if(!r.lines){toast('No hay piezas para armar stockarg.txt.');return false}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([r.txt],{type:'text/plain'}));a.download='stockarg.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
-  toast(`stockarg.txt: ${fN(r.lines)} repuestos, ${fN(r.u)} u. Ejecutá "Subir stock a OIC" para mandarlo.`)}
+  toast(`stockarg.txt: ${fN(r.lines)} repuestos, ${fN(r.u)} u.`);return true}
 async function oicTxtSaved(){const {codes}=depoData();const deps=[];for(const c of codes){const d=await readDataset('depoplan--'+c);if(d)deps.push({codigo:c,plan:d.rows})}
-  if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return}oicTxtDl(deps)}
-function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const d=a.depos.filter(x=>x.plan.length);if(d.length)oicTxtDl(d)}
+  if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return false}return oicTxtDl(deps)}
+/* Qué archivos se generan (casillas, se recuerdan en este navegador): Excel por depósito y/o stockarg.txt para OIC */
+function depoOut(){let o=null;try{o=JSON.parse(localStorage.getItem('depoOut')||'null')}catch(_){}return o&&typeof o==='object'?{xls:!!o.xls,txt:!!o.txt}:{xls:false,txt:true}}
+function depoOutChecks(){const o=depoOut();return `<span class="checks" style="align-items:center;padding:0 4px"><label><input type="checkbox" data-depout="xls"${o.xls?' checked':''}> Excel por depósito</label><label><input type="checkbox" data-depout="txt"${o.txt?' checked':''}> stockarg.txt (OIC)</label></span>`}
+async function depoGen(){const o=depoOut();if(!o.xls&&!o.txt){toast('Marcá Excel, stockarg.txt o los dos.');return}if(o.xls)await depoXls();if(o.txt)await oicTxtSaved()}
+/* Subir a OIC: la página no puede conectarse por SFTP, así que baja stockarg.txt y abre el programa de subida de esta PC
+   con el enlace karamoic://subir (se registra una vez por PC con "Instalar boton OIC.bat"). */
+async function oicUp(){const ok=await oicTxtSaved();if(!ok)return;
+  setTimeout(()=>{location.href='karamoic://subir'},1800);
+  toast('Bajando stockarg.txt y abriendo el programa de subida a OIC. Si el navegador pregunta, tocá "Abrir". Si no pasa nada, falta instalar el botón en esta PC (Instalar boton OIC.bat).')}
+function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const o=depoOut(),d=a.depos.filter(x=>x.plan.length);if(!d.length)return;
+  if(o.xls)exportXlsx(depoFile(a.fecha),[...d].sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(x=>depoSheet(x.codigo,x.nombre,x.plan)));
+  if(o.txt)oicTxtDl(d)}
 function depoXlsFromOld(a){if(!a||!a.depos||!a.depos.length)return;const sh=a.depos.filter(d=>d.plan.length).sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(d=>depoSheet(d.codigo,d.nombre,d.plan));if(sh.length)exportXlsx(depoFile(a.fecha),sh)}
 function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Depósito','Sucursal','Ítems N','Unidades N','$ costo N','$ precio N','Ítems P','$ costo P','Ítems total','$ costo total','$ precio total']];
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
@@ -3104,7 +3115,7 @@ function stPrev(p){
   const idx=rows.map((r,i)=>i).filter(i=>!q||rows[i][0].includes(q)||norm(rows[i][1]).includes(q)).sort((x,y)=>rows[y][2]*(rows[y][3]||0)-rows[x][2]*(rows[x][3]||0));
   const tot=rows.reduce((t,r)=>t+r[2]*(r[3]||0),0),hasAct=rows.some(r=>r[4]);
   const nE=[...E.keys()].filter(k=>k.startsWith(suc+'|')).length;
-  return `<div class="panel-h" style="margin:14px 0 8px"><div><h3>Piezas de mayor a menor $ a costo</h3><p class="sub">Podés corregir stock o costo antes de guardar: se actualiza el total, el stock de la sucursal y la planilla por depósito. Enter o salir del casillero aplica el cambio.</p></div>
+  return `<div class="panel-h" style="margin:14px 0 8px"><div><h3>Piezas de mayor a menor $ a costo</h3><p class="sub">Podés corregir stock o costo antes de guardar: se actualiza el total, el stock de la sucursal y la planilla por depósito. Enter o salir del casillero aplica el cambio.</p>${p.auto.depos&&p.auto.depos.length?`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:12.5px">Al guardar, bajar:</b>${depoOutChecks()}</div>`:''}</div>
     <div class="toolbar">${sucs.length>1?`<select id="stSuc">${sucs.map(x=>`<option${x===suc?' selected':''}>${esc(x)}</option>`).join('')}</select>`:''}<input type="search" id="stQ" placeholder="Buscar código o descripción" value="${esc(u.q||'')}" style="min-width:220px">${E.size?`<button class="btn" data-act="stUndo">Deshacer ${E.size} cambio${E.size>1?'s':''}</button>`:''}</div></div>
     <div class="tiles" style="margin-bottom:10px"><div class="tile"><div class="l">${esc(suc||'Sucursal')} · total a costo</div><div class="v">${f$(tot)}</div><div class="n">${fN(rows.length)} piezas${nE?` · <b style="color:var(--accent)">${nE} corregida${nE>1?'s':''}</b>`:''}</div></div></div>
     <div class="tw" style="max-height:560px"><table><thead><tr><th>#</th><th>Código</th><th>Origen</th><th>Descripción</th><th class="n">Stock</th><th class="n">Cto. rep.</th><th class="n">$ a costo</th><th class="n">% del total</th>${hasAct?'<th>Actividad</th>':''}</tr></thead><tbody>
@@ -3403,6 +3414,8 @@ document.addEventListener('click',e=>{
   else if(a==='exportInf')exportInf();
   else if(a==='depoXls')depoXls();
   else if(a==='oicTxt')oicTxtSaved();
+  else if(a==='depoGen')depoGen();
+  else if(a==='oicUp')oicUp();
   else if(a==='fybXls')fybXls();
   else if(a==='depoHist')depoHist();
   else if(a==='ctrlGen'){t.disabled=true;ctrlGen().finally(()=>{t.disabled=false})}
@@ -3474,6 +3487,7 @@ document.addEventListener('change',e=>{
   if(t.id==='mapHdr'){S.pending.h=Math.max(0,num(t.value)-1);autoMap();render();return}
   if(t.dataset.map){S.pending.map[t.dataset.map]=+t.value;render();return}
   if(t.dataset.msuc!=null){S.pending.auto.multi[+t.dataset.msuc].sucApp=t.value;return}
+  if(t.dataset.depout){const o=depoOut();o[t.dataset.depout]=t.checked;try{localStorage.setItem('depoOut',JSON.stringify(o))}catch(_){}const y=window.scrollY;render();window.scrollTo(0,y);return}
   if(t.dataset.st&&S.pending&&S.pending.auto){const p=S.pending,[i,f]=t.dataset.st.split(':'),sucs=stSucs(p.auto),suc=sucs.includes((p.ui||{}).suc)?p.ui.suc:sucs[0];const raw=String(t.value).trim();
     stEdit(p,suc,+i,f,f==='c'&&raw===''?null:num(raw));const y=window.scrollY;render();window.scrollTo(0,y);return}
   if(t.id==='stSuc'&&S.pending){(S.pending.ui||(S.pending.ui={})).suc=t.value;S.pending.ui.n=100;render();return}
