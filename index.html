@@ -2669,8 +2669,8 @@ function vDepos(){
   const last=c=>{const fs=fechas.filter(f=>at(f,c));return [at(fs[fs.length-1],c),fs.length>1?at(fs[fs.length-2],c):null]};
   const delta=(a,b)=>{if(!b)return'<span class="faint">primera foto</span>';const d=a[k][met]-b[k][met],pc=b[k][met]?d/b[k][met]*100:0;return `<span style="color:${d>0?'var(--warn)':d<0?'var(--ok)':'var(--muted)'}">${d>0?'+':''}${M[1](d)} (${d>0?'+':''}${fN(pc,1)} %)</span> <span class="faint">vs ${fD(b.fecha)}</span>`};
   const orig=k==='N'?'origen N':k==='P'?'origen P':'todos los orígenes';
-  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Avanzado</i> (o el <i>Detallado</i>) con los tres depósitos: baja la planilla por depósito y además actualiza el stock de cada sucursal.</p></div>
-    <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label><button class="btn" data-act="depoXls"${codes.length?'':' disabled'}>Planilla por depósito</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
+  return `${S.pending?vMapping(S.pending):''}<section class="panel"><div class="panel-h"><div><h2>Stock por depósito</h2><p class="sub">Cada vez que se carga un informe de stock de Autologica queda una foto por depósito con su fecha, para ver cómo evoluciona. Se muestra ${orig} (selector de origen de arriba). Subí el informe <i>Stock a costo &gt; Avanzado</i> (o el <i>Detallado</i>) con los tres depósitos: baja el <b>stockarg.txt</b> para OIC y además actualiza el stock de cada sucursal.</p></div>
+    <div class="toolbar"><label class="btn file pri">Cargar informe de stock<input type="file" accept=".xlsx,.xls" data-file="stock"></label><button class="btn" data-act="oicTxt"${codes.length?'':' disabled'} title="Archivo de ancho fijo para OIC, de la última carga">stockarg.txt (OIC)</button><button class="btn" data-act="depoXls"${codes.length?'':' disabled'}>Planilla por depósito</button><button class="btn" data-act="depoHist"${codes.length?'':' disabled'}>Exportar evolución</button></div></div>
     ${codes.length?`<div class="tiles">${codes.map(c=>{const [a,b]=last(c);return `<div class="tile"><div class="l">${esc(depName(c,a.nombre))} · ${esc(a.sucursal||a.sucAutologica)}</div><div class="v">${M[1](a[k][met])}</div><div class="n">${fN(a[k].items)} ítems · ${fN(a[k].u)} u · al ${fD(a.fecha)}</div><div class="n">${delta(a,b)}</div></div>`}).join('')}</div>`:`<div class="empty">Todavía no hay fotos de depósitos. Cargá el informe de stock para empezar el registro.</div>`}
   </section>
   ${codes.length?`<section class="panel"><div class="panel-h"><h3>Evolución</h3><select id="depMet">${Object.entries(DEP_MET).map(([x,o])=>`<option value="${x}"${x===met?' selected':''}>${o[0]}</option>`).join('')}</select></div>
@@ -2704,7 +2704,35 @@ async function depoXls(){
   exportXlsx(depoFile(f0),sheets);
 }
 /* al confirmar la carga se baja la planilla del informe recién cargado */
-function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const sh=a.depos.filter(d=>d.plan.length).sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(d=>depoSheet(d.codigo,d.nombre,d.plan));if(sh.length)exportXlsx(depoFile(a.fecha),sh)}
+/* stockarg.txt para OIC (formato de ancho fijo). Una línea por repuesto con el precio y, a continuación, un bloque por depósito:
+   1-20 repuesto (alineado a la derecha) · 21-33 precio con coma decimal (ceros a la izquierda) · 34-48 DN (espacios a la derecha)
+   · 49-54 cantidad (ceros a la izquierda) · 55-69 ubicación (alineada a la derecha); el bloque DN+cantidad+ubicación se repite por depósito.
+   Encabezado DOPH+AAAAMMDDHHMMSS (hora de generación) y pie DOPF0000000000000000. Sin origen P, como la planilla. */
+const DEPO_DN={'1910101':'191','2910101':'869','3910101':'60501'};
+function oicTxt(deps){
+  const asc=v=>String(v==null?'':v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,' ').trim();
+  const L=new Map();
+  for(const d of [...deps].sort((x,y)=>String(x.codigo).localeCompare(String(y.codigo)))){const dn=DEPO_DN[d.codigo]||String(d.codigo);
+    for(const l of d.plan){const code=asc(l[0]);if(!code||String(l[1]==null?'':l[1]).trim().toUpperCase()==='P')continue;
+      const q=num(l[4]),v=num(l[7]);let e=L.get(code);if(!e){e={code,pr:null,g:new Map()};L.set(code,e)}
+      if(e.pr==null&&q>0&&v>0)e.pr=v/q;
+      const g=e.g.get(dn)||{q:0,ub:''};g.q+=q;if(!g.ub)g.ub=asc(l[3]);e.g.set(dn,g)}}
+  const n=new Date(),p2=x=>String(x).padStart(2,'0');
+  const out=['DOPH'+n.getFullYear()+p2(n.getMonth()+1)+p2(n.getDate())+p2(n.getHours())+p2(n.getMinutes())+p2(n.getSeconds())];let lines=0,u=0;
+  for(const e of [...L.values()].sort((x,y)=>x.code.localeCompare(y.code))){
+    const gs=[...e.g.entries()].map(([dn,g])=>[dn,Math.round(g.q),g.ub]).filter(g=>g[1]>0);if(!gs.length)continue;
+    out.push(e.code.slice(-20).padStart(20,' ')+(e.pr||0).toFixed(2).replace('.',',').padStart(13,'0')+gs.map(([dn,q,ub])=>dn.slice(0,15).padEnd(15,' ')+String(Math.min(q,999999)).padStart(6,'0')+ub.slice(0,15).padStart(15,' ')).join(''));
+    lines++;gs.forEach(g=>u+=g[1])}
+  out.push('DOPF0000000000000000');
+  return {txt:out.join('\r\n')+'\r\n',lines,u};
+}
+function oicTxtDl(deps){const r=oicTxt(deps);if(!r.lines){toast('No hay piezas para armar stockarg.txt.');return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([r.txt],{type:'text/plain'}));a.download='stockarg.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+  toast(`stockarg.txt: ${fN(r.lines)} repuestos, ${fN(r.u)} u. Ejecutá "Subir stock a OIC" para mandarlo.`)}
+async function oicTxtSaved(){const {codes}=depoData();const deps=[];for(const c of codes){const d=await readDataset('depoplan--'+c);if(d)deps.push({codigo:c,plan:d.rows})}
+  if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return}oicTxtDl(deps)}
+function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const d=a.depos.filter(x=>x.plan.length);if(d.length)oicTxtDl(d)}
+function depoXlsFromOld(a){if(!a||!a.depos||!a.depos.length)return;const sh=a.depos.filter(d=>d.plan.length).sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(d=>depoSheet(d.codigo,d.nombre,d.plan));if(sh.length)exportXlsx(depoFile(a.fecha),sh)}
 function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Depósito','Sucursal','Ítems N','Unidades N','$ costo N','$ precio N','Ítems P','$ costo P','Ítems total','$ costo total','$ precio total']];
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
   exportXlsx(`Evolucion stock por deposito ${stamp()}.xlsx`,[{name:'Evolucion',rows}])}
@@ -3374,6 +3402,7 @@ document.addEventListener('click',e=>{
   else if(a==='exportStd')exportXlsx(`Estandar stock ${stdKey()} ${stamp()}.xlsx`,[{name:'Estandar',rows:stdSheet()}]);
   else if(a==='exportInf')exportInf();
   else if(a==='depoXls')depoXls();
+  else if(a==='oicTxt')oicTxtSaved();
   else if(a==='fybXls')fybXls();
   else if(a==='depoHist')depoHist();
   else if(a==='ctrlGen'){t.disabled=true;ctrlGen().finally(()=>{t.disabled=false})}
