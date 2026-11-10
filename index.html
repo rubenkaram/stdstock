@@ -2978,21 +2978,34 @@ async function saveHerr(items,extra,msg){
   if(db)await db.doc('config/herramientas').set({items:S.herr.items,fileName:S.herr.fileName,loadedAt:S.herr.loadedAt,usuario:S.herr.usuario});
   S._ctrlL=null;recompute();render();if(msg)toast(msg+(db?' Guardado.':''));
 }
-/* Excel de Ford "Resumen Herramientas y Equipos": columna A código (204-816, 303-1247, 822REEV-303-01, /811770//), B descripción.
-   Las filas de título (modelo o boletín, con espacios) no son códigos. */
+/* Planilla de Ford "Herramientas y Equipos SRP 4.0" (formato actual): en cada hoja hay una fila de encabezados con
+   "N°" (código) y "Descripcion"; se leen todas las hojas que la tengan (Convencionales CC, BS, EVs). Las hojas sin
+   columna de código (Generales, Diagnóstico, Híbridos) se saltean. Si ninguna hoja tiene ese encabezado se usa el
+   formato viejo "Resumen Herramientas y Equipos": columna A código, B descripción (hoja HH.EE. SRP). */
 const HERR_RE=/^(?=.*\d)[A-Z0-9/.\-]{3,}$/i;
+const herrH=x=>String(x==null?'':x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9°º]/g,'');
 async function importHerr(f){
   const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
-  let names=wb.SheetNames.filter(n=>/HH\.?\s*EE/i.test(n)&&!/backup/i.test(n));if(!names.length)names=wb.SheetNames;
-  const m=new Map();
-  for(const n of names){const aoa=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null});
-    for(const r of aoa){if(!r)continue;const c=String(r[0]==null?'':r[0]).trim(),d=String(r[1]==null?'':r[1]).trim();
-      if(!c||!d||/\s/.test(c)||!HERR_RE.test(c))continue;const k=hkey(c);if(k&&!m.has(k))m.set(k,[c,d])}}
-  if(!m.size){toast('No encontré códigos de herramientas en ese archivo (columna A código, B descripción).');return}
+  const m=new Map(),hojas=[];
+  const add=(c,d)=>{c=String(c==null?'':c).replace(/\s+/g,'').trim();d=String(d==null?'':d).replace(/\s+/g,' ').trim();
+    if(!c||!HERR_RE.test(c))return;const k=hkey(c);if(k&&!m.has(k))m.set(k,[c,d||'(sin descripción)'])};
+  for(const n of wb.SheetNames){if(/backup/i.test(n))continue;const aoa=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null});
+    let ci=-1,di=-1,hi=-1;
+    for(let i=0;i<Math.min(40,aoa.length)&&hi<0;i++){const h=(aoa[i]||[]).map(herrH);
+      const c=h.findIndex(x=>['n°','nº','n','no','nro','codigo','numero'].includes(x)),d=h.findIndex(x=>x.startsWith('descripcion'));
+      if(c>=0&&d>=0){ci=c;di=d;hi=i}}
+    if(hi<0)continue;const antes=m.size;
+    for(let i=hi+1;i<aoa.length;i++){const r=aoa[i];if(r)add(r[ci],r[di])}
+    hojas.push(`${n.trim()} (${m.size-antes})`);
+  }
+  if(!m.size){let names=wb.SheetNames.filter(n=>/HH\.?\s*EE/i.test(n)&&!/backup/i.test(n));if(!names.length)names=wb.SheetNames;
+    for(const n of names)for(const r of XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null})){if(!r)continue;
+      const c=String(r[0]==null?'':r[0]).trim(),d=String(r[1]==null?'':r[1]).trim();if(c&&d&&!/\s/.test(c))add(c,d)}}
+  if(!m.size){toast('No encontré códigos de herramientas en ese archivo (busco la columna "N°" junto a "Descripcion").');return}
   const man=(S.herr&&S.herr.items||[]).filter(x=>x[2]==='m'&&!m.has(hkey(x[0])));
   const items=[...m.values(),...man];
   await saveHerr(items,{fileName:f.name,loadedAt:new Date().toISOString(),usuario:ME()?ME().email:''},`${fN(m.size)} herramientas especiales cargadas${man.length?` (+${man.length} agregadas a mano)`:''}.`);
-  logAct('Cargó herramientas especiales',`${f.name} · ${items.length} códigos`,'Todas');
+  logAct('Cargó herramientas especiales',`${f.name} · ${items.length} códigos${hojas.length?' · '+hojas.join(', '):''}`,'Todas');
 }
 function herrStockMap(){const m=new Map();if(!S.D.stock)return m;const H=herrSet();
   for(const r of S.D.stock.rows){const k=hkey(r[0]);if(!H.has(k))continue;const q=num(r[2]),v=q*(num(r[3])||0);const o=m.get(k)||{q:0,v:0};o.q+=q;o.v+=v;m.set(k,o)}return m}
@@ -3003,7 +3016,7 @@ function vHerr(){
   const L=items.map(x=>({c:x[0],d:x[1],m:x[2]==='m',st:sm.get(hkey(x[0]))})).filter(x=>!q||x.c.toLowerCase().includes(q)||x.d.toLowerCase().includes(q)||hkey(x.c).includes(hkey(q)))
     .sort((a,b)=>(b.st?b.st.v:0)-(a.st?a.st.v:0)||a.c.localeCompare(b.c,undefined,{numeric:true}));
   return `<section class="panel" id="herrPanel"><div class="panel-h"><div><h2>Herramientas especiales</h2><p class="sub">Común a todas las sucursales. Estos códigos no entran en el control de stock y, salvo que marques <b>Ver: Herramientas</b> arriba, tampoco en el sugerido, el informe, más vendidos ni el stock por actividad. Se compara el código sin barras ni guiones (204-816 = /204816//).</p></div>
-    <div class="toolbar"><label class="btn file">${items.length?'Volver a cargar el listado':'Cargar listado de Ford'}<input type="file" accept=".xlsx,.xls,.xlsm" data-file="herr"></label>${items.length?`<button class="btn" data-act="herrXls">Exportar</button><button class="btn" data-act="herrList">${u.herrOpen?'Ocultar lista':'Ver lista'}</button>`:''}</div></div>
+    <div class="toolbar"><label class="btn file">${items.length?'Volver a cargar el listado':'Cargar planilla de Ford'}<input type="file" accept=".xlsx,.xls,.xlsm" data-file="herr"></label>${items.length?`<button class="btn" data-act="herrXls">Exportar</button><button class="btn" data-act="herrList">${u.herrOpen?'Ocultar lista':'Ver lista'}</button>`:''}</div></div>
     <div class="tiles" style="margin-bottom:${u.herrOpen?12:0}px"><div class="tile"><div class="l">En la lista</div><div class="v">${fN(items.length)}</div><div class="n">${H.fileName?esc(H.fileName):'sin cargar'}${H.loadedAt?' · '+fD(H.loadedAt.slice(0,10)):''}</div></div>
       <div class="tile"><div class="l">Con stock en ${esc(S.P.sucursal)}</div><div class="v">${S.D.stock?fN(conSt.length):'–'}</div><div class="n">${S.D.stock?fN(tq,1)+' u · stock al '+fD(S.D.stock.meta.fecha):'falta cargar el stock'}</div></div>
       <div class="tile"><div class="l">$ a costo que se separa</div><div class="v">${S.D.stock?fM(tv):'–'}</div><div class="n">todos los orígenes</div></div></div>
