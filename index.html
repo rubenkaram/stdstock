@@ -2527,7 +2527,15 @@ function vStockAct(){
   return `<section class="panel" style="padding:0;overflow:hidden"><div id="actBox"><div class="empty">Cargando stock por actividad…</div></div></section>`;
 }
 const actId=p=>(p.emitido||p.file)+'|'+p.rows.length;
-async function actIndex(){const d=await db.doc('config/stockact').get();return d.exists?(d.data().snaps||[]):[]}
+/* La lista de fechas sale de los datasets stockact-* que existen, no solo de config/stockact: ese índice se pisaba
+   cuando otra pestaña o PC con la app abierta desde antes guardaba su copia vieja, y se perdían fechas de la lista. */
+async function actIndex(){
+  const d=await db.doc('config/stockact').get(),L=d.exists?(d.data().snaps||[]):[],seen=new Set(L.map(x=>x.doc));
+  const ds=await db.collection('ds').get();
+  for(const x of ds.docs){if(!x.id.startsWith('stockact-')||seen.has(x.id))continue;const m=(x.data()||{}).meta||{};
+    L.push({id:(m.emitido||m.file)+'|'+(m.count||0),doc:x.id,emitido:m.emitido||'',file:m.file||'',n:m.count||0,fecha:m.loadedAt||''});seen.add(x.id)}
+  const ok=new Set(ds.docs.map(x=>x.id));return L.filter(x=>ok.has(x.doc)).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||'')));
+}
 window.__actSave=async p=>{
   if(!db)throw new Error('sin conexión con la base');
   const S1=[],A1=[],ix=(a,v)=>{let i=a.indexOf(v);if(i<0){a.push(v);i=a.length-1}return i};
@@ -2540,7 +2548,7 @@ window.__actSave=async p=>{
   logAct('Cargó stock por actividad',`${p.file||''} · emitido ${p.emitido||'?'} · ${rows.length} piezas`,'Todas');
 };
 window.__actDel=async id=>{
-  if(!db)return;const L=await actIndex(),x=L.find(o=>o.id===id);if(!x)return;
+  if(!db)return;const L=await actIndex(),x=L.find(o=>o.id===id)||{id,doc:'stockact-'+slug(id),emitido:String(id).split('|')[0]};
   await readDataset(x.doc).catch(()=>null);await deleteDataset(x.doc);
   await db.doc('config/stockact').set({snaps:L.filter(o=>o.id!==id)});
   logAct('Eliminó stock por actividad',`emitido ${x.emitido||'?'}`,'Todas');

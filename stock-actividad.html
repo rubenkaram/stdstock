@@ -197,7 +197,8 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
   <section class="kpis" id="kpis" aria-label="Totales de la selección"></section>
 
   <section class="panel" id="evoPanel">
-    <div class="panel-h"><div><h2>Evolución del inventario</h2><p id="evoSub">Marcá en la lista de fechas las que querés comparar.</p></div></div>
+    <div class="panel-h"><div><h2>Evolución del inventario</h2><p id="evoSub">Marcá en la lista de fechas las que querés comparar.</p></div>
+      <div class="seg" id="fEvo" role="group" aria-label="Tipo de gráfico de la evolución"></div></div>
     <div class="chartbox" id="cEvoBox"><canvas id="cEvo" role="img" aria-label="Evolución del inventario por fecha"></canvas></div>
     <div class="tscroll" id="evoTable"></div>
   </section>
@@ -343,8 +344,13 @@ let snaps = [];
 const sel = { snap:null, sucs:new Set(), ori:'ALL', acts:new Set(), metric:'sc', verR:true, verH:false, evo:new Set() };
 /* fechas marcadas para la evolución: se recuerdan en este navegador */
 let evoInit = false;
-function evoLoad(){ let a = null; try { a = JSON.parse(localStorage.getItem('actEvo') || 'null'); } catch {} if (Array.isArray(a)) { sel.evo = new Set(a.filter(id => snaps.some(x => x.id === id))); } else snaps.slice(-12).forEach(x => sel.evo.add(x.id)); evoInit = true; }
-function evoSave(){ try { localStorage.setItem('actEvo', JSON.stringify([...sel.evo])); } catch {} }
+const EVO_T = [['lact','Líneas por actividad'],['lsuc','Líneas por sucursal'],['ltot','Línea total'],['bar','Barras apiladas']];
+let evoType = (() => { try { const v = localStorage.getItem('actEvoT'); return EVO_T.some(x => x[0] === v) ? v : 'lact'; } catch { return 'lact'; } })();
+/* se guardan las marcadas y las ya vistas: una fecha nueva (o recuperada) entra marcada */
+function evoLoad(){ let a = null; try { a = JSON.parse(localStorage.getItem('actEvo2') || 'null') || (x => x && { on:x, known:x })(JSON.parse(localStorage.getItem('actEvo') || 'null')); } catch {}
+  const on = new Set(a && a.on || []), known = new Set(a && a.known || []);
+  sel.evo = new Set(snaps.filter(x => on.has(x.id) || !known.has(x.id)).map(x => x.id)); evoInit = true; evoSave(); }
+function evoSave(){ try { localStorage.setItem('actEvo2', JSON.stringify({ on:[...sel.evo], known:snaps.map(x => x.id) })); } catch {} }
 /* herramientas especiales (lista que carga la app): no cuentan como stock de repuestos */
 let HERR = new Set();
 const hk = c => String(c ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9#]/g,'');
@@ -437,11 +443,23 @@ function renderEvo() {
   $('cEvoBox').style.display = pts.length < 2 ? 'none' : '';
   if (charts.evo) { charts.evo.destroy(); charts.evo = null; }
   if (pts.length < 2) { $('evoTable').innerHTML = ''; return; }
-  if (window.Chart) { const P = palette(false), font = { family:"'IBM Plex Sans', system-ui, sans-serif", size:12 };
-    charts.evo = new Chart($('cEvo'), { type:'bar', data:{ labels: pts.map(p => p.x.day), datasets: acts.map((ac,i) => ({ label:ac, data: pts.map(p => p.v[i]), backgroundColor: colorOf(ac, P), borderColor:P.surface, borderWidth:{top:1}, borderSkipped:false, maxBarThickness:56, stack:'s' })) },
-      options:{ responsive:true, maintainAspectRatio:false, animation:{duration:250}, plugins:{ legend:{ position:'bottom', labels:{ color:P.ink2, font, boxWidth:12, boxHeight:12, useBorderRadius:true, borderRadius:3 } },
-        tooltip:{ backgroundColor:P.ink, titleColor:P.surface, bodyColor:P.surface, padding:10, cornerRadius:6, callbacks:{ label:c => ' ' + c.dataset.label + ': ' + fmtM(k, c.raw), footer: it => 'Total: ' + fmtM(k, pts[it[0].dataIndex].tot) } } },
-        scales:{ x:{ stacked:true, grid:{display:false}, border:{color:P.grid}, ticks:{color:P.ink2,font} }, y:{ stacked:true, beginAtZero:true, grid:{color:P.grid}, border:{display:false}, ticks:{color:P.muted,font,maxTicksLimit:6,callback:v => compact(v, M.money)} } } } }); }
+  $('fEvo').innerHTML = EVO_T.map(([t,l]) => `<button type="button" aria-pressed="${evoType===t}" data-et="${t}">${esc(l)}</button>`).join('');
+  $('fEvo').querySelectorAll('button').forEach(b => b.onclick = () => { evoType = b.dataset.et; try { localStorage.setItem('actEvoT', evoType); } catch {} renderEvo(); });
+  if (window.Chart) { const P = palette(false), font = { family:"'IBM Plex Sans', system-ui, sans-serif", size:12 }, labels = pts.map(p => p.x.day);
+    const line = (label, data, color, extra) => Object.assign({ type:'line', label, data, borderColor:color, backgroundColor:color, borderWidth:2, pointRadius: pts.length > 40 ? 0 : 3, pointHoverRadius:5, tension:.25, fill:false, spanGaps:true }, extra || {});
+    const totLine = () => line('Total', pts.map(p => p.tot), P.ink, { borderDash:[6,4], borderWidth:2.5 });
+    let ds;
+    if (evoType === 'bar') ds = acts.map((ac,i) => ({ type:'bar', label:ac, data: pts.map(p => p.v[i]), backgroundColor: colorOf(ac, P), borderColor:P.surface, borderWidth:{top:1}, borderSkipped:false, maxBarThickness:56, stack:'s' }));
+    else if (evoType === 'lsuc') { const ss = selSucs(), SC = [P.a[0], P.a[1], P.a[2], P.a[6], P.a[4]];
+      ds = ss.map((sc,i) => line(sc, pts.map(p => p.falta.includes(sc) ? null : metricVal(p.it.filter(r => r.suc === sc), k)), SC[i % SC.length]));
+      if (ss.length > 1) ds.push(totLine()); }
+    else if (evoType === 'ltot') ds = [line('Total ' + selSucs().join(' + '), pts.map(p => p.tot), P.a[0], { fill:true, backgroundColor:'rgba(42,120,214,.12)' })];
+    else { ds = acts.map((ac,i) => line(ac, pts.map(p => p.v[i]), colorOf(ac, P))); if (acts.length > 1) ds.push(totLine()); }
+    const stacked = evoType === 'bar';
+    charts.evo = new Chart($('cEvo'), { type: stacked ? 'bar' : 'line', data:{ labels, datasets: ds },
+      options:{ responsive:true, maintainAspectRatio:false, animation:{duration:250}, interaction:{ mode:'index', intersect:false }, plugins:{ legend:{ position:'bottom', labels:{ color:P.ink2, font, boxWidth:12, boxHeight:12, useBorderRadius:true, borderRadius:3 } },
+        tooltip:{ backgroundColor:P.ink, titleColor:P.surface, bodyColor:P.surface, footerColor:P.surface, padding:10, cornerRadius:6, callbacks:{ label:c => ' ' + c.dataset.label + ': ' + (c.raw == null ? 'sin datos' : fmtM(k, c.raw)), footer: it => stacked ? 'Total: ' + fmtM(k, pts[it[0].dataIndex].tot) : '' } } },
+        scales:{ x:{ stacked, grid:{display:false}, border:{color:P.grid}, ticks:{color:P.ink2,font,autoSkip:true,maxRotation:45} }, y:{ stacked, beginAtZero: stacked, grid:{color:P.grid}, border:{display:false}, ticks:{color:P.muted,font,maxTicksLimit:6,callback:v => compact(v, M.money)} } } } }); }
   const fv = v => fmtM(k, v), dv = (v, p) => { if (p == null) return '<td class="num">—</td><td class="num">—</td>'; const d = v - p, c = d > 0 ? 'neg' : d < 0 ? 'pos' : ''; return `<td class="num ${k==='sc'||k==='sp'||k==='s'||k==='n'?'':''}">${(d>0?'+':'')}${fv(d)}</td><td class="num">${p ? (d>0?'+':'') + nf1.format(d / Math.abs(p) * 100) + ' %' : '—'}</td>`; };
   const head = `<tr><th>Fecha</th>${acts.map(a => `<th class="num"><span class="act"><i style="background:${colorOf(a)}"></i>${esc(a)}</span></th>`).join('')}<th class="num">Total</th><th class="num">Var. vs anterior</th><th class="num">Var. %</th><th class="num">Muerta+obs.+reobs (% $)</th></tr>`;
   const body = pts.map((p, i) => `<tr><td>${esc(p.x.day)}${p.falta.length ? ` <span class="muted" style="font-size:11.5px" title="El informe de esta fecha no trae ${esc(p.falta.join(', '))}">· sin ${esc(p.falta.join(', '))}</span>` : ''}</td>${p.v.map(v => `<td class="num">${fv(v)}</td>`).join('')}<td class="num"><b>${fv(p.tot)}</b></td>${dv(p.tot, i ? pts[i-1].tot : null)}<td class="num">${pct(p.a.inmShare)}</td></tr>`).join('');
