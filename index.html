@@ -2729,7 +2729,11 @@ function oicTxt(deps){
 function oicTxtDl(deps){const r=oicTxt(deps);if(!r.lines){toast('No hay piezas para armar stockarg.txt.');return false}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([r.txt],{type:'text/plain'}));a.download='stockarg.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
   toast(`stockarg.txt: ${fN(r.lines)} repuestos, ${fN(r.u)} u.`);return true}
-async function oicTxtSaved(){const {codes}=depoData();const deps=[];for(const c of codes){const d=await readDataset('depoplan--'+c);if(d)deps.push({codigo:c,plan:d.rows})}
+async function oicTxtSaved(){const {codes}=depoData();const deps=[];for(const c of codes){const d=await readDataset('depoplan--'+c);if(d)deps.push({codigo:c,plan:d.rows,fecha:d.meta.fecha})}
+  if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return false}
+  const f=depoFaltan(deps.map(x=>x.codigo)),fs=[...new Set(deps.filter(x=>DEPO_DN[x.codigo]).map(x=>x.fecha))];
+  if(f.length||fs.length>1){toast(`No se generó stockarg.txt: hace falta el stock de todo el concesionario del mismo día${f.length?` (falta ${f.map(c=>depName(c)).join(', ')})`:` (hay cargas del ${fs.map(fD).join(' y del ')})`}. Cargá el informe con los tres depósitos en Stock por depósito.`);return false}
+  return oicTxtDl(deps.filter(x=>DEPO_DN[x.codigo]))}
   if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return false}return oicTxtDl(deps)}
 /* Qué archivos se generan (casillas, se recuerdan en este navegador): Excel por depósito y/o stockarg.txt para OIC */
 function depoOut(){let o=null;try{o=JSON.parse(localStorage.getItem('depoOut')||'null')}catch(_){}return o&&typeof o==='object'?{xls:!!o.xls,txt:!!o.txt}:{xls:false,txt:true}}
@@ -2740,9 +2744,12 @@ async function depoGen(){const o=depoOut();if(!o.xls&&!o.txt){toast('Marcá Exce
 async function oicUp(){const ok=await oicTxtSaved();if(!ok)return;
   setTimeout(()=>{location.href='karamoic://subir'},1800);
   toast('Bajando stockarg.txt y abriendo el programa de subida a OIC. Si el navegador pregunta, tocá "Abrir". Si no pasa nada, falta instalar el botón en esta PC (Instalar boton OIC.bat).')}
-function depoXlsFrom(a){if(!a||!a.depos||!a.depos.length)return;const o=depoOut(),d=a.depos.filter(x=>x.plan.length);if(!d.length)return;
+/* stockarg.txt solo con el stock de todo el concesionario: el informe trae los tres depósitos (191, 869 y 60501) */
+const depoFaltan=codes=>Object.keys(DEPO_DN).filter(c=>!codes.includes(c));
+/* Los archivos se bajan solo si el informe se cargó desde Stock > Stock por depósito (no desde Cargar datos u otra pantalla) */
+function depoXlsFrom(a,p){if(!a||!a.depos||!a.depos.length||!p||p.tab!=='depositos')return;const o=depoOut(),d=a.depos.filter(x=>x.plan.length);if(!d.length)return;
   if(o.xls)exportXlsx(depoFile(a.fecha),[...d].sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(x=>depoSheet(x.codigo,x.nombre,x.plan)));
-  if(o.txt)oicTxtDl(d)}
+  if(o.txt){const f=depoFaltan(d.map(x=>x.codigo));if(f.length)setTimeout(()=>toast(`No se generó stockarg.txt: el informe no trae el stock de todo el concesionario (falta ${f.map(c=>depName(c)).join(', ')}).`),400);else oicTxtDl(d)}}
 function depoXlsFromOld(a){if(!a||!a.depos||!a.depos.length)return;const sh=a.depos.filter(d=>d.plan.length).sort((x,y)=>x.codigo.localeCompare(y.codigo)).map(d=>depoSheet(d.codigo,d.nombre,d.plan));if(sh.length)exportXlsx(depoFile(a.fecha),sh)}
 function depoHist(){const {codes,fechas,at}=depoData();const rows=[['Fecha','Depósito','Sucursal','Ítems N','Unidades N','$ costo N','$ precio N','Ítems P','$ costo P','Ítems total','$ costo total','$ precio total']];
   for(const f of fechas)for(const c of codes){const x=at(f,c);if(x)rows.push([f,depName(c,x.nombre),x.sucursal,x.N.items,x.N.u,x.N.costo,x.N.precio,x.P.items,x.P.costo,x.T.items,x.T.costo,x.T.precio])}
@@ -3115,7 +3122,7 @@ function stPrev(p){
   const idx=rows.map((r,i)=>i).filter(i=>!q||rows[i][0].includes(q)||norm(rows[i][1]).includes(q)).sort((x,y)=>rows[y][2]*(rows[y][3]||0)-rows[x][2]*(rows[x][3]||0));
   const tot=rows.reduce((t,r)=>t+r[2]*(r[3]||0),0),hasAct=rows.some(r=>r[4]);
   const nE=[...E.keys()].filter(k=>k.startsWith(suc+'|')).length;
-  return `<div class="panel-h" style="margin:14px 0 8px"><div><h3>Piezas de mayor a menor $ a costo</h3><p class="sub">Podés corregir stock o costo antes de guardar: se actualiza el total, el stock de la sucursal y la planilla por depósito. Enter o salir del casillero aplica el cambio.</p>${p.auto.depos&&p.auto.depos.length?`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:12.5px">Al guardar, bajar:</b>${depoOutChecks()}</div>`:''}</div>
+  return `<div class="panel-h" style="margin:14px 0 8px"><div><h3>Piezas de mayor a menor $ a costo</h3><p class="sub">Podés corregir stock o costo antes de guardar: se actualiza el total, el stock de la sucursal y la planilla por depósito. Enter o salir del casillero aplica el cambio.</p>${p.tab==='depositos'&&p.auto.depos&&p.auto.depos.length?`<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:12.5px">Al guardar, bajar:</b>${depoOutChecks()}</div>`:''}</div>
     <div class="toolbar">${sucs.length>1?`<select id="stSuc">${sucs.map(x=>`<option${x===suc?' selected':''}>${esc(x)}</option>`).join('')}</select>`:''}<input type="search" id="stQ" placeholder="Buscar código o descripción" value="${esc(u.q||'')}" style="min-width:220px">${E.size?`<button class="btn" data-act="stUndo">Deshacer ${E.size} cambio${E.size>1?'s':''}</button>`:''}</div></div>
     <div class="tiles" style="margin-bottom:10px"><div class="tile"><div class="l">${esc(suc||'Sucursal')} · total a costo</div><div class="v">${f$(tot)}</div><div class="n">${fN(rows.length)} piezas${nE?` · <b style="color:var(--accent)">${nE} corregida${nE>1?'s':''}</b>`:''}</div></div></div>
     <div class="tw" style="max-height:560px"><table><thead><tr><th>#</th><th>Código</th><th>Origen</th><th>Descripción</th><th class="n">Stock</th><th class="n">Cto. rep.</th><th class="n">$ a costo</th><th class="n">% del total</th>${hasAct?'<th>Actividad</th>':''}</tr></thead><tbody>
@@ -3167,7 +3174,7 @@ async function readFile(kind,file){
   const buf=await file.arrayBuffer();
   const wb=XLSX.read(buf,{type:'array',cellDates:true});
   const sheet=pickSheet(kind,wb);
-  S.pending={kind,wb,fileName:file.name,sheets:wb.SheetNames,sheet};
+  S.pending={kind,wb,fileName:file.name,sheets:wb.SheetNames,sheet,tab:S.tab};
   setSheet(sheet);
 }
 function pickSheet(kind,wb){
@@ -3255,12 +3262,12 @@ async function confirmAuto(p){
         const cur=(await loadSuc(to)).stock;if(cur&&cur.meta.fecha&&a.fecha&&a.fecha<cur.meta.fecha){old.push(`${to} (tiene stock al ${fD(cur.meta.fecha)})`);continue}
         await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:to,fuente:'Autologica',sucOrigen:d.suc,porOrigen:true},d.rows,to);
         S.finalsBy[to]={};logAct('Cargó stock',`${p.fileName} · ${d.rows.length} piezas al ${fD(a.fecha)}`,to);done.push(`${to} ${fN(d.rows.length)}`)}
-      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);depoXlsFrom(a);
+      S.finals=S.finalsBy[S.P.sucursal]||{};saveDraft();await saveDepos(a,p.fileName);depoXlsFrom(a,p);
       toast((done.length?`Stock al ${fD(a.fecha)} guardado: ${done.join(' · ')} piezas.`:`Foto del ${fD(a.fecha)} guardada en Stock por depósito.`)+(old.length?` No se reemplazó el stock de ${old.join(', ')}: este informe es más viejo.`:''));
     }else if((()=>{const c=S.cache[suc]&&S.cache[suc].stock;return c&&c.meta.fecha&&a.fecha&&a.fecha<c.meta.fecha})()){
-      await saveDepos(a,p.fileName,suc);depoXlsFrom(a);toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
+      await saveDepos(a,p.fileName,suc);depoXlsFrom(a,p);toast(`Este informe es del ${fD(a.fecha)} y ${suc} ya tiene stock al ${fD(S.cache[suc].stock.meta.fecha)}: solo se guardó la foto en Stock por depósito.`);
     }else{
-      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);depoXlsFrom(a);
+      await saveDataset('stock',{fileName:p.fileName,fecha:a.fecha,sucursal:suc,fuente:'Autologica',sucOrigen:a.suc,porOrigen:true},a.rows,suc);await saveDepos(a,p.fileName,suc);depoXlsFrom(a,p);
       if(suc!==S.P.sucursal)await useSuc(suc);S.finals={};saveDraft();saveParams();logAct('Cargó stock',`${p.fileName} · ${a.rows.length} piezas al ${fD(a.fecha)}`,suc);toast(`Stock guardado: ${fN(a.rows.length)} piezas al ${fD(a.fecha)}.`);
     }
     S.pending=null;
