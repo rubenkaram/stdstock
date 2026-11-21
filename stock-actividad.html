@@ -67,6 +67,26 @@ header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:spac
 .period .f{font-size:12px;color:var(--muted)}
 .period .x{border:0;background:none;color:var(--muted);font-size:16px;line-height:1;padding:2px 4px;border-radius:4px}
 .period .x:hover{color:var(--neg)}
+.plist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.plist-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 10px;background:var(--surface-2);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
+.plist-h button{border:0;background:none;color:var(--accent);font-size:12.5px;padding:2px 4px;cursor:pointer}
+.prow{display:grid;grid-template-columns:auto minmax(150px,1fr) auto auto auto;align-items:center;gap:10px;padding:7px 10px;border-top:1px solid var(--line);font-size:13px}
+.prow:first-of-type{border-top:0}
+.prow.on{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.prow input{accent-color:var(--accent);width:16px;height:16px}
+.prow .pv{border:0;background:none;text-align:left;padding:0;cursor:pointer;color:var(--ink);font:inherit}
+.prow .pv .d{font-weight:600;font-variant-numeric:tabular-nums}
+.prow .pv .f{font-size:12px;color:var(--muted)}
+.prow .num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.prow .tag{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.prow .tag b{color:var(--neg);font-weight:600}
+.prow .ver{font-size:11.5px;font-weight:600;color:var(--accent);white-space:nowrap}
+.prow .x{border:0;background:none;color:var(--muted);font-size:16px;line-height:1;padding:2px 4px;border-radius:4px}
+.prow .x:hover{color:var(--neg)}
+@media (max-width:640px){.prow{grid-template-columns:auto 1fr auto}.prow .num,.prow .tag{grid-column:2}}
+.chip.nodata{border-style:dashed;opacity:.75}
+.evo-empty{color:var(--muted);font-size:13px}
+.pos{color:var(--pos,#1baf7a)}
 .msg{border-radius:8px;padding:8px 12px;font-size:13px;background:var(--warn-bg);color:var(--warn-ink)}
 
 .filters{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);margin-inline:-16px;padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center}
@@ -159,7 +179,7 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
 
   <section class="drop" id="drop" aria-label="Informes cargados">
     <div class="lbl">
-      <strong>Fecha de stock</strong>
+      <strong>Fechas de stock cargadas</strong>
       <span class="muted" style="font-size:13px">Arrastrá acá el .xls de "Stock a costo · Detallado", o <button class="btn primary" id="btnLoad" type="button" style="padding:4px 10px;font-size:13px">cargar archivo</button></span>
       <input type="file" id="file" accept=".xls,.xlsx" multiple hidden>
     </div>
@@ -175,6 +195,12 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
   </nav>
 
   <section class="kpis" id="kpis" aria-label="Totales de la selección"></section>
+
+  <section class="panel" id="evoPanel">
+    <div class="panel-h"><div><h2>Evolución del inventario</h2><p id="evoSub">Marcá en la lista de fechas las que querés comparar.</p></div></div>
+    <div class="chartbox" id="cEvoBox"><canvas id="cEvo" role="img" aria-label="Evolución del inventario por fecha"></canvas></div>
+    <div class="tscroll" id="evoTable"></div>
+  </section>
 
   <section class="panel">
     <div class="panel-h">
@@ -314,7 +340,11 @@ const toDate = s => { const m = String(s||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4
 
 /* ---------- estado ---------- */
 let snaps = [];
-const sel = { snap:null, sucs:new Set(), ori:'ALL', acts:new Set(), metric:'sc', verR:true, verH:false };
+const sel = { snap:null, sucs:new Set(), ori:'ALL', acts:new Set(), metric:'sc', verR:true, verH:false, evo:new Set() };
+/* fechas marcadas para la evolución: se recuerdan en este navegador */
+let evoInit = false;
+function evoLoad(){ let a = null; try { a = JSON.parse(localStorage.getItem('actEvo') || 'null'); } catch {} if (Array.isArray(a)) { sel.evo = new Set(a.filter(id => snaps.some(x => x.id === id))); } else snaps.slice(-12).forEach(x => sel.evo.add(x.id)); evoInit = true; }
+function evoSave(){ try { localStorage.setItem('actEvo', JSON.stringify([...sel.evo])); } catch {} }
 /* herramientas especiales (lista que carga la app): no cuentan como stock de repuestos */
 let HERR = new Set();
 const hk = c => String(c ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9#]/g,'');
@@ -324,14 +354,24 @@ const det = { q:'', f:'all', key:'sc', dir:-1, page:0, size:50 };
 const gSort = { key:'rank', dir:1 };
 const knownActs = new Set();
 
+/* Una fecha por día: si se cargan varios informes del mismo día (por ejemplo, uno de La Rioja y Catamarca y otro del Quick Lane),
+   se juntan; las sucursales que trae el informe nuevo reemplazan a las mismas del anterior. */
+const dayOf = p => { const m = String(p.emitido || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[1].padStart(2,'0') + '/' + m[2].padStart(2,'0') + '/' + m[3] : String(p.file || '?'); };
 function addSnap(p) {
   const id = (p.emitido || p.file) + '|' + p.rows.length;
   const rows = p.rows.map(r => ({ ...r, suc:sucShort(r.suc), act:actShort(r.act) }));
-  snaps = snaps.filter(x => x.id !== id);
-  snaps.push({ id, emitido:p.emitido, file:p.file, rows, d:toDate(p.emitido) });
+  const day = dayOf(p), sid = 'D:' + day, d = toDate(p.emitido), nuevas = new Set(rows.map(r => r.suc));
+  let x = snaps.find(o => o.id === sid);
+  if (!x) { x = { id:sid, day, emitido:p.emitido, file:p.file, rows:[], d, parts:[] }; snaps.push(x); }
+  x.parts = x.parts.filter(o => o.id !== id);
+  x.rows = x.rows.filter(r => !nuevas.has(r.suc)).concat(rows);
+  x.parts.push({ id, file:p.file, emitido:p.emitido, sucs:[...nuevas] });
+  if (d >= x.d) { x.d = d; x.emitido = p.emitido; }
+  x.file = [...new Set(x.parts.map(o => o.file).filter(Boolean))].join(' + ');
   snaps.sort((a,b) => a.d - b.d);
-  sel.snap = id;
-  return id;
+  sel.snap = sid;
+  if (evoInit) sel.evo.add(sid);
+  return sid;
 }
 (function loadEmbed(){
   if (!EMBED) return;
@@ -339,10 +379,12 @@ function addSnap(p) {
 })();
 const curSnap = () => snaps.find(s => s.id === sel.snap) || snaps[snaps.length - 1];
 const current = () => (curSnap() || { rows:[] }).rows;
-function allSucs(){ return [...new Set(current().map(r => r.suc))].sort((a,b) => sucRank(a)-sucRank(b) || a.localeCompare(b)); }
+function allSucs(){ const s = new Set(SUC_ORDER); for (const x of snaps) for (const r of x.rows) s.add(r.suc); return [...s].sort((a,b) => sucRank(a)-sucRank(b) || a.localeCompare(b)); }
+function sucsOf(x){ return new Set((x || { rows:[] }).rows.map(r => r.suc)); }
 function allActs(){ return [...new Set(current().map(r => r.act))].sort((a,b) => actRank(a)-actRank(b) || a.localeCompare(b)); }
 function allOris(){ return new Set(current().map(r => r.ori)); }
-function filtered() { return current().filter(r => sel.sucs.has(r.suc) && sel.acts.has(r.act) && (sel.ori === 'ALL' || r.ori === sel.ori) && (!HERR.size || tipoOk(r))); }
+const pasa = r => sel.sucs.has(r.suc) && sel.acts.has(r.act) && (sel.ori === 'ALL' || r.ori === sel.ori) && (!HERR.size || tipoOk(r));
+function filtered() { return current().filter(pasa); }
 function tipoLabel(){ return !HERR.size ? '' : sel.verR && sel.verH ? 'Repuestos + herramientas especiales' : sel.verH ? 'Solo herramientas especiales' : 'Solo repuestos (sin herramientas especiales)'; }
 function agg(items) {
   const a = { s:0, sc:0, sp:0, scInm:0 }, n = new Set();
@@ -359,21 +401,57 @@ function palette(light) {
   return { ink:cssVar('--ink'), ink2:cssVar('--ink-2'), muted:cssVar('--muted'), grid:cssVar('--line'), surface:cssVar('--surface'), a:[1,2,3,4,5,6,7,8].map(i => cssVar('--a'+i)) };
 }
 function colorOf(g, P) { P = P || palette(false); let i = actRank(g); if (i >= 50) i = 5 + allActs().filter(x => actRank(x) >= 50).indexOf(g); return P.a[Math.min(i, 7)]; }
-function snapLabel(){ const s = curSnap(); return s ? 'Stock emitido el ' + (s.emitido || '?') : ''; }
+function snapLabel(){ const s = curSnap(); return s ? 'Stock al ' + s.day + (s.emitido ? ' (emitido ' + s.emitido + ')' : '') : ''; }
 function oriLabel(){ return sel.ori === 'ALL' ? 'Todos los orígenes' : (ORI[sel.ori] || sel.ori); }
 function filtLabel(){ return [snapLabel(), selSucs().join(' + '), oriLabel() + (HERR.size ? ' · ' + tipoLabel() : ''), 'Actividad: ' + selActs().join(', ')]; }
 
 /* ---------- UI ---------- */
 function showMsg(t){ const m = $('msg'); m.textContent = t; m.hidden = !t; }
 function renderSnaps() {
-  $('periods').innerHTML = snaps.length ? '' : '<span class="empty0">' + (window.__actLoading ? 'Cargando fechas guardadas…' : 'Todavía no hay stock por actividad guardado. Cargá el informe.') + '</span>';
-  if (snaps.length) $('periods').innerHTML = snaps.map(p => `<label class="period"><input type="radio" name="snap" data-p="${esc(p.id)}" ${sel.snap===p.id?'checked':''}><span><span class="d">Stock al ${esc(String(p.emitido||'?').split(' ')[0])}</span><br><span class="f">${esc(p.file||'')}${p.emitido?' · emitido '+esc(p.emitido):''}</span></span>${(snaps.length>1||(window.parent&&window.parent.__actDel))?`<button class="x" type="button" data-rm="${esc(p.id)}" aria-label="Quitar">×</button>`:''}</label>`).join('');
-  $('periods').querySelectorAll('input[data-p]').forEach(i => i.onchange = () => { sel.snap = i.dataset.p; renderFilters(); render(); });
-  $('periods').querySelectorAll('[data-rm]').forEach(b => b.onclick = async e => { e.preventDefault(); const P = window.parent && window.parent !== window ? window.parent : null; if (P && P.__actDel) { if (!confirm('¿Eliminar esta fecha de stock guardada? Se borra para todos.')) return; try { await P.__actDel(b.dataset.rm); } catch (err) { toast('No se pudo eliminar: ' + (err.message || err)); return; } } snaps = snaps.filter(p => p.id !== b.dataset.rm); if (sel.snap === b.dataset.rm) sel.snap = snaps.length ? snaps[snaps.length-1].id : null; renderSnaps(); renderFilters(); render(); });
+  if (!snaps.length) { $('periods').innerHTML = '<span class="empty0">' + (window.__actLoading ? 'Cargando fechas guardadas…' : 'Todavía no hay stock por actividad guardado. Cargá el informe.') + '</span>'; return; }
+  const P = window.parent && window.parent !== window ? window.parent : null, canDel = snaps.length > 1 || (P && P.__actDel);
+  const lst = snaps.slice().reverse(), nEvo = snaps.filter(x => sel.evo.has(x.id)).length;
+  $('periods').innerHTML = `<div class="plist" style="width:100%"><div class="plist-h"><span>${snaps.length} fecha${snaps.length>1?'s':''} · tildá las que querés ver en <b>Evolución del inventario</b> (${nEvo} marcada${nEvo===1?'':'s'}) · tocá la fecha para ver su detalle</span><span><button type="button" data-evoall="1">Marcar todas</button><button type="button" data-evoall="0">Ninguna</button></span></div>` +
+    lst.map(p => { const sc = p.rows.reduce((t,r) => t + r.sc, 0), hs = sucsOf(p), falta = SUC_ORDER.filter(x => !hs.has(x));
+      return `<div class="prow${sel.snap===p.id?' on':''}"><input type="checkbox" data-evo="${esc(p.id)}" ${sel.evo.has(p.id)?'checked':''} aria-label="Incluir ${esc(p.day)} en la evolución">
+        <button type="button" class="pv" data-p="${esc(p.id)}"><span class="d">Stock al ${esc(p.day)}</span><br><span class="f">${esc(p.file||'')}${p.emitido?' · emitido '+esc(p.emitido):''}</span></button>
+        <span class="tag">${[...hs].sort((a,b)=>sucRank(a)-sucRank(b)).join(' · ')}${falta.length?` · <b>sin ${esc(falta.join(', '))}</b>`:''}</span>
+        <span class="num">${money(sc)}</span>
+        ${sel.snap===p.id?'<span class="ver">viendo</span>':canDel?`<button class="x" type="button" data-rm="${esc(p.id)}" aria-label="Eliminar ${esc(p.day)}" title="Eliminar esta fecha">×</button>`:'<span></span>'}</div>`; }).join('') + '</div>';
+  $('periods').querySelectorAll('[data-p]').forEach(b => b.onclick = () => { sel.snap = b.dataset.p; renderSnaps(); renderFilters(); render(); });
+  $('periods').querySelectorAll('[data-evo]').forEach(i => i.onchange = () => { if (i.checked) sel.evo.add(i.dataset.evo); else sel.evo.delete(i.dataset.evo); evoSave(); renderSnaps(); renderEvo(); });
+  $('periods').querySelectorAll('[data-evoall]').forEach(b => b.onclick = () => { if (b.dataset.evoall === '1') snaps.forEach(x => sel.evo.add(x.id)); else sel.evo.clear(); evoSave(); renderSnaps(); renderEvo(); });
+  $('periods').querySelectorAll('[data-rm]').forEach(b => b.onclick = async e => { e.preventDefault(); const x = snaps.find(o => o.id === b.dataset.rm); if (!x) return;
+    if (P && P.__actDel) { if (!confirm('¿Eliminar el stock del ' + x.day + '? Se borra para todos.')) return; try { for (const pt of x.parts) await P.__actDel(pt.id); } catch (err) { toast('No se pudo eliminar: ' + (err.message || err)); return; } }
+    snaps = snaps.filter(o => o.id !== x.id); sel.evo.delete(x.id); evoSave(); if (sel.snap === x.id) sel.snap = snaps.length ? snaps[snaps.length-1].id : null; renderSnaps(); renderFilters(); render(); });
+}
+/* ---------- evolución ---------- */
+function evoData() {
+  const k = sel.metric, acts = selActs(), pts = snaps.filter(x => sel.evo.has(x.id));
+  return { k, acts, pts: pts.map(x => { const it = x.rows.filter(pasa), g = groupBy(it, r => r.act), a = agg(it), hs = sucsOf(x);
+    return { x, it, a, v: acts.map(ac => metricVal(g.get(ac) || [], k)), tot: metricVal(it, k), falta: selSucs().filter(sc => !hs.has(sc)) }; }) };
+}
+function renderEvo() {
+  const { k, acts, pts } = evoData(), M = METRICS[k];
+  $('evoSub').textContent = pts.length < 2 ? 'Tildá dos o más fechas en la lista de arriba para ver cómo cambia el inventario.' : M.l + ' por fecha y actividad · ' + selSucs().join(' + ') + ' · ' + oriLabel() + ' · ' + pts.length + ' fechas';
+  $('cEvoBox').style.display = pts.length < 2 ? 'none' : '';
+  if (charts.evo) { charts.evo.destroy(); charts.evo = null; }
+  if (pts.length < 2) { $('evoTable').innerHTML = ''; return; }
+  if (window.Chart) { const P = palette(false), font = { family:"'IBM Plex Sans', system-ui, sans-serif", size:12 };
+    charts.evo = new Chart($('cEvo'), { type:'bar', data:{ labels: pts.map(p => p.x.day), datasets: acts.map((ac,i) => ({ label:ac, data: pts.map(p => p.v[i]), backgroundColor: colorOf(ac, P), borderColor:P.surface, borderWidth:{top:1}, borderSkipped:false, maxBarThickness:56, stack:'s' })) },
+      options:{ responsive:true, maintainAspectRatio:false, animation:{duration:250}, plugins:{ legend:{ position:'bottom', labels:{ color:P.ink2, font, boxWidth:12, boxHeight:12, useBorderRadius:true, borderRadius:3 } },
+        tooltip:{ backgroundColor:P.ink, titleColor:P.surface, bodyColor:P.surface, padding:10, cornerRadius:6, callbacks:{ label:c => ' ' + c.dataset.label + ': ' + fmtM(k, c.raw), footer: it => 'Total: ' + fmtM(k, pts[it[0].dataIndex].tot) } } },
+        scales:{ x:{ stacked:true, grid:{display:false}, border:{color:P.grid}, ticks:{color:P.ink2,font} }, y:{ stacked:true, beginAtZero:true, grid:{color:P.grid}, border:{display:false}, ticks:{color:P.muted,font,maxTicksLimit:6,callback:v => compact(v, M.money)} } } } }); }
+  const fv = v => fmtM(k, v), dv = (v, p) => { if (p == null) return '<td class="num">—</td><td class="num">—</td>'; const d = v - p, c = d > 0 ? 'neg' : d < 0 ? 'pos' : ''; return `<td class="num ${k==='sc'||k==='sp'||k==='s'||k==='n'?'':''}">${(d>0?'+':'')}${fv(d)}</td><td class="num">${p ? (d>0?'+':'') + nf1.format(d / Math.abs(p) * 100) + ' %' : '—'}</td>`; };
+  const head = `<tr><th>Fecha</th>${acts.map(a => `<th class="num"><span class="act"><i style="background:${colorOf(a)}"></i>${esc(a)}</span></th>`).join('')}<th class="num">Total</th><th class="num">Var. vs anterior</th><th class="num">Var. %</th><th class="num">Muerta+obs.+reobs (% $)</th></tr>`;
+  const body = pts.map((p, i) => `<tr><td>${esc(p.x.day)}${p.falta.length ? ` <span class="muted" style="font-size:11.5px" title="El informe de esta fecha no trae ${esc(p.falta.join(', '))}">· sin ${esc(p.falta.join(', '))}</span>` : ''}</td>${p.v.map(v => `<td class="num">${fv(v)}</td>`).join('')}<td class="num"><b>${fv(p.tot)}</b></td>${dv(p.tot, i ? pts[i-1].tot : null)}<td class="num">${pct(p.a.inmShare)}</td></tr>`).join('');
+  const f = pts[0], l = pts[pts.length - 1];
+  const foot = `<tr><td>Cambio ${esc(f.x.day)} → ${esc(l.x.day)}</td>${acts.map((a,j) => { const d = l.v[j] - f.v[j]; return `<td class="num">${d>0?'+':''}${fv(d)}</td>`; }).join('')}<td class="num"><b>${l.tot-f.tot>0?'+':''}${fv(l.tot - f.tot)}</b></td><td class="num"></td><td class="num">${f.tot ? ((l.tot-f.tot>0?'+':'') + nf1.format((l.tot - f.tot) / Math.abs(f.tot) * 100) + ' %') : '—'}</td><td class="num"></td></tr>`;
+  $('evoTable').innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table>`;
 }
 function chip(label, pressed, attrs, dot) { return `<button type="button" class="chip" aria-pressed="${pressed}" ${attrs}>${dot?`<span class="dot" style="background:${dot}"></span>`:''}${esc(label)}</button>`; }
-function chipGroup(el, items, set, attr, dotFn) {
-  el.innerHTML = items.map(x => chip(x, set.has(x), `data-${attr}="${esc(x)}"`, dotFn && dotFn(x))).join('') + chip('Todas', items.every(x => set.has(x)), 'data-all class="chip ghost"');
+function chipGroup(el, items, set, attr, dotFn, extra) {
+  el.innerHTML = items.map(x => { const e = extra && extra(x); return chip(x + (e ? ' · ' + e.t : ''), set.has(x), `data-${attr}="${esc(x)}"` + (e ? ` class="chip nodata" title="${esc(e.title)}"` : ''), dotFn && dotFn(x)); }).join('') + chip('Todas', items.every(x => set.has(x)), 'data-all class="chip ghost"');
   el.querySelectorAll(`[data-${attr}]`).forEach(b => b.onclick = () => { const x = b.dataset[attr]; if (set.has(x)) { if (items.filter(i => set.has(i)).length > 1) set.delete(x); } else set.add(x); renderFilters(); render(); });
   el.querySelector('[data-all]').onclick = () => { items.forEach(x => set.add(x)); renderFilters(); render(); };
 }
@@ -381,7 +459,8 @@ function renderFilters() {
   const sucs = allSucs(), acts = allActs(), oris = allOris();
   if (![...sel.sucs].some(s => sucs.includes(s))) sucs.forEach(s => sel.sucs.add(s));
   acts.forEach(a => { if (!knownActs.has(a)) { knownActs.add(a); sel.acts.add(a); } });
-  chipGroup($('fSuc'), sucs, sel.sucs, 's');
+  const hay = sucsOf(curSnap());
+  chipGroup($('fSuc'), sucs, sel.sucs, 's', null, x => hay.has(x) ? null : { t:'sin datos', title:'El informe de esta fecha no trae ' + x + '. Exportalo de Autologica con la sucursal ' + ({ 'La Rioja':'19101', 'Catamarca':'19102', 'Quick Lane':'19103' }[x] || '') + ' y cargalo: se suma a la misma fecha.' });
   chipGroup($('fAct'), acts, sel.acts, 'a', a => colorOf(a));
   const oriOpts = [['ALL','Todos'],['N','Original (N)'],['P','Proveedor (P)']];
   [...oris].filter(o => o !== 'N' && o !== 'P').sort().forEach(o => oriOpts.push([o, (ORI[o] || 'Otro') + ' (' + o + ')']));
@@ -393,7 +472,7 @@ function renderFilters() {
     $('fTipo').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { const k = b.dataset.t === 'R' ? 'verR' : 'verH', o = k === 'verR' ? 'verH' : 'verR'; sel[k] = !sel[k]; if (!sel[k] && !sel[o]) sel[o] = true; det.page = 0; renderFilters(); render(); });
   }
   $('fMetric').innerHTML = Object.entries(METRICS).map(([k,m]) => `<button type="button" aria-pressed="${sel.metric===k}" data-m="${k}">${esc(m.short)}</button>`).join('');
-  $('fMetric').querySelectorAll('button').forEach(b => b.onclick = () => { sel.metric = b.dataset.m; renderFilters(); renderCharts(filtered()); });
+  $('fMetric').querySelectorAll('button').forEach(b => b.onclick = () => { sel.metric = b.dataset.m; renderFilters(); renderCharts(filtered()); renderEvo(); });
 }
 
 /* ---------- KPIs ---------- */
@@ -519,10 +598,11 @@ function renderDetail(items) {
 $('q').oninput = e => { det.q = e.target.value; det.page = 0; renderDetail(filtered()); };
 $('fDet').onchange = e => { det.f = e.target.value; det.page = 0; renderDetail(filtered()); };
 
-function render() { document.querySelector('.wrap').classList.toggle('nodata', !snaps.length); if (!snaps.length) return; const items = filtered(); renderKpis(items); renderGroupTable(items); renderBranches(items); renderCharts(items); renderDetail(items); }
+function render() { document.querySelector('.wrap').classList.toggle('nodata', !snaps.length); if (!snaps.length) return; const items = filtered(); renderKpis(items); renderEvo(); renderGroupTable(items); renderBranches(items); renderCharts(items); renderDetail(items); }
 
 /* ---------- carga ---------- */
 async function loadFiles(files) {
+  if (!evoInit) evoLoad();
   if (!window.XLSX) { showMsg('No se pudo cargar el lector de Excel. Revisá la conexión y recargá la página.'); return; }
   const errs = [], ok = [];
   for (const f of files) {
@@ -535,9 +615,9 @@ async function loadFiles(files) {
         if (!p.rows.length) { errs.push(f.name + ': no encontré piezas.'); continue; }
         const P = window.parent && window.parent !== window ? window.parent : null;
         if (P && P.__actSave) { try { await P.__actSave(p); } catch (err) { errs.push(f.name + ': se ve pero NO se pudo guardar (' + (err.message || err) + ').'); } }
-        addSnap(p); ok.push('Stock emitido el ' + (p.emitido || '?'));
+        addSnap(p); evoSave(); ok.push('Stock al ' + dayOf(p) + ' (' + [...new Set(p.rows.map(r => sucShort(r.suc)))].join(', ') + ')');
         const n = new Set(p.rows.map(r => sucShort(r.suc))).size;
-        if (n < 3) errs.push(f.name + ': trae ' + n + (n === 1 ? ' sola sucursal' : ' sucursales') + '. Si querés ver las tres, exportalo de Autologica con las sucursales 19101, 19102 y 19103.');
+        if (n < 3) errs.push(f.name + ': trae ' + n + (n === 1 ? ' sola sucursal' : ' sucursales') + '. Si querés ver las tres, exportalo de Autologica con las sucursales 19101, 19102 y 19103, o cargá aparte la que falta: se suma a la misma fecha.');
       }
       else if (tipo === 'stocksinact') errs.push(f.name + ': es el informe de stock sin la columna Actividad. Exportá "Stock a costo > Detallado" con la actividad.');
       else if (tipo === 'ventas') errs.push(f.name + ': es un informe de ventas. Este programa es solo para stock; las ventas van en el programa de Frecuencia de ventas.');
@@ -594,6 +674,11 @@ async function exportXlsx() {
   fmtCols(ws2, [null,null,'0',QF,MF,PF,MF], b0, bs.length - 1);
   ws2['!cols'] = [{wch:20},{wch:28},{wch:10},{wch:12},{wch:18},{wch:10},{wch:18}];
   XLSX.utils.book_append_sheet(wb, ws2, 'Por sucursal');
+  { const { k, acts, pts } = evoData(); if (pts.length > 1) {
+    const ev = [['Evolución del inventario · ' + METRICS[k].l], ['Sucursales', selSucs().join(' + ')], ['Origen', oriLabel()], [], ['Fecha', ...acts, 'Total', 'Var. vs anterior', 'Var. %', '% muerta+obs.+reobs ($)', 'Falta en el informe']];
+    pts.forEach((p, i) => { const pr = i ? pts[i-1].tot : null; ev.push([p.x.day, ...p.v, p.tot, pr == null ? '' : p.tot - pr, pr ? (p.tot - pr) / Math.abs(pr) : '', p.a.inmShare, p.falta.join(', ')]); });
+    const ws3 = XLSX.utils.aoa_to_sheet(ev); ws3['!cols'] = [{wch:14}, ...acts.map(() => ({wch:16})), {wch:18}, {wch:18}, {wch:10}, {wch:14}, {wch:22}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Evolución'); } }
   const dr = detailRows(items);
   const ds = [['Código','Descripción','Origen','Ubicación','Actividad','Sucursal','Stock','Costo reposición unit.','Stock $ costo','Precio de lista unit.','Stock $ lista']];
   dr.forEach(x => ds.push([x.code + (HERR.size && isHerr(x) ? ' (HE)' : ''), x.desc, x.ori, x.ubi, x.act, x.suc, R2(x.s), R2(x.cu), R2(x.sc), R2(x.pl), R2(x.sp)]));
@@ -677,6 +762,7 @@ window.__actTools = (codes, ver) => {
 window.__actLoad = list => {
   window.__actLoading = false;
   for (const p of (list || [])) addSnap(p);
+  evoLoad();
   if (snaps.length) sel.snap = snaps[snaps.length - 1].id;
   renderSnaps(); renderFilters(); render();
 };
