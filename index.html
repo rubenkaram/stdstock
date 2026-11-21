@@ -2734,7 +2734,6 @@ async function oicTxtSaved(){const {codes}=depoData();const deps=[];for(const c 
   const f=depoFaltan(deps.map(x=>x.codigo)),fs=[...new Set(deps.filter(x=>DEPO_DN[x.codigo]).map(x=>x.fecha))];
   if(f.length||fs.length>1){toast(`No se generó stockarg.txt: hace falta el stock de todo el concesionario del mismo día${f.length?` (falta ${f.map(c=>depName(c)).join(', ')})`:` (hay cargas del ${fs.map(fD).join(' y del ')})`}. Cargá el informe con los tres depósitos en Stock por depósito.`);return false}
   return oicTxtDl(deps.filter(x=>DEPO_DN[x.codigo]))}
-  if(!deps.length){toast('No hay planillas guardadas: volvé a cargar el informe de stock.');return false}return oicTxtDl(deps)}
 /* Qué archivos se generan (casillas, se recuerdan en este navegador): Excel por depósito y/o stockarg.txt para OIC */
 function depoOut(){let o=null;try{o=JSON.parse(localStorage.getItem('depoOut')||'null')}catch(_){}return o&&typeof o==='object'?{xls:!!o.xls,txt:!!o.txt}:{xls:false,txt:true}}
 function depoOutChecks(){const o=depoOut();return `<span class="checks" style="align-items:center;padding:0 4px"><label><input type="checkbox" data-depout="xls"${o.xls?' checked':''}> Excel por depósito</label><label><input type="checkbox" data-depout="txt"${o.txt?' checked':''}> stockarg.txt (OIC)</label></span>`}
