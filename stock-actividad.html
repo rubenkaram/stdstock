@@ -238,6 +238,8 @@ td.hdet{white-space:normal;min-width:260px;max-width:520px;font-size:12.5px;colo
       <div class="dtools">
         <div class="seg" id="revKey" role="group" aria-label="Ordenar la revisión"></div>
         <label class="muted" style="font-size:13px">Mostrar <select id="revN" aria-label="Piezas por sucursal"><option>25</option><option>50</option><option>100</option><option>200</option></select> por sucursal</label>
+        <button class="btn" type="button" id="revXls" style="padding:5px 12px">Excel del listado</button>
+        <button class="btn" type="button" id="revPdf" style="padding:5px 12px" title="Para imprimir y controlar: trae una columna vacía de conteo físico">PDF para controlar</button>
       </div>
     </div>
     <div class="rev-grid" id="revGrid"></div>
@@ -682,14 +684,20 @@ $('q').oninput = e => { det.q = e.target.value; det.page = 0; renderDetail(filte
 $('fDet').onchange = e => { det.f = e.target.value; det.page = 0; renderDetail(filtered()); };
 
 /* ---------- revisión de las piezas más caras ---------- */
-const rev = { key:'cu', n:25, pend:new Map() };
+const rev = { key:'cu', n:25, pend:new Map(), sk:'rank', sd:1 };
+const REV_COLS = [['rank','#',1],['code','Código',0],['desc','Descripción',0],['act','Act.',0],['ubi','Ubicación',0],['s','Stock',1],['cu','Costo unit.',1],['sc','Stock $ costo',1],['pl','Precio lista',1],['ok','OK',0]];
+/* orden de la tabla: se toca el encabezado; primero se eligen las N más caras y después se ordenan como se pida */
+function revSort(L) {
+  const k = rev.sk, d = rev.sd, val = r => k === 'rank' ? r._rk : k === 'act' ? actRank(r.act) : k === 'ok' ? (r.ok ? 1 : 0) : k === 'ubi' || k === 'code' || k === 'desc' ? String(r[k] || '') : r[k];
+  return L.slice().sort((a,b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y, 'es', { numeric:true }) : x - y) * d || a._rk - b._rk; });
+}
 const REV_K = [['cu','Costo unitario'],['sc','Valor en stock']];
 const rk = r => r.pid + '#' + r.ix;
 const fIn = v => v == null ? '' : String(Math.round(v * 100) / 100).replace('.', ',');
 function revTop() {
   const items = filtered(), g = groupBy(items, r => r.suc);
   const hay = sucsOf(curSnap());
-  return selSucs().filter(sc => hay.has(sc)).map(sc => [sc, (g.get(sc) || []).slice().sort((a,b) => b.o[rev.key] - a.o[rev.key] || a.code.localeCompare(b.code)).slice(0, rev.n)]);
+  return selSucs().filter(sc => hay.has(sc)).map(sc => { const L = (g.get(sc) || []).slice().sort((a,b) => b.o[rev.key] - a.o[rev.key] || a.code.localeCompare(b.code)).slice(0, rev.n); L.forEach((r, i) => r._rk = i + 1); return [sc, revSort(L)]; });
 }
 function rowVals(r) { const p = rev.pend.get(rk(r)); return p || { s:r.s, cu:r.cu, pl:r.pl, ubi:r.ubi, ok:r.ok }; }
 function renderReview() {
@@ -703,10 +711,10 @@ function renderReview() {
   $('revGrid').innerHTML = blocks.map(([sc, L]) => {
     const ed = canEdit(sc), tot = L.reduce((t,r) => t + rowVals(r).s * rowVals(r).cu, 0), ok = L.filter(r => rowVals(r).ok).length;
     return `<article class="branch"><div class="branch-h"><h3>${esc(sc)}</h3><span class="s">${L.length} piezas · ${money(tot)} a costo · ${ok} de ${L.length} revisadas OK${ed ? '' : ' · solo lectura (tu usuario no tiene esta sucursal)'}</span></div>
-      <div class="tscroll"><table><thead><tr><th class="num">#</th><th>Código</th><th>Descripción</th><th>Act.</th><th>Ubicación</th><th class="num">Stock</th><th class="num">Costo unit.</th><th class="num">Stock $ costo</th><th class="num">Precio lista</th><th title="Marcá las piezas que ya controlaste">OK</th><th></th></tr></thead><tbody>` +
+      <div class="tscroll"><table><thead><tr>${REV_COLS.map(([k,l,n]) => `<th class="sort${n?' num':''}" data-rs="${k}" title="Tocá para ordenar">${l}<span class="ar">${rev.sk===k?(rev.sd>0?'▲':'▼'):''}</span></th>`).join('')}<th></th></tr></thead><tbody>` +
       (L.length ? L.map((r, i) => { const v = rowVals(r), dis = ed ? '' : ' disabled', o = r.o, ch = k => v[k] !== o[k] ? ' chg' : '';
         const was = k => v[k] !== o[k] ? `<span class="was">informe ${k === 'ubi' ? esc(o[k] || '—') : k === 's' ? qty(o[k]) : money(o[k])}</span>` : '';
-        return `<tr data-k="${esc(rk(r))}" class="${r.ed || rev.pend.has(rk(r)) ? 'ed' : ''}${v.ok ? ' okr' : ''}"><td class="num muted">${i+1}</td><td>${esc(r.code)}${HERR.size && isHerr(r) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}</td><td class="desc" title="${esc(r.desc)}">${esc(r.desc)}</td>
+        return `<tr data-k="${esc(rk(r))}" class="${r.ed || rev.pend.has(rk(r)) ? 'ed' : ''}${v.ok ? ' okr' : ''}"><td class="num muted">${r._rk}</td><td>${esc(r.code)}${HERR.size && isHerr(r) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}</td><td class="desc" title="${esc(r.desc)}">${esc(r.desc)}</td>
           <td><span class="act"><i style="background:${colorOf(r.act)}"></i>${esc(r.act)}</span></td>
           <td><input class="ri u${ch('ubi')}" data-f="ubi" value="${esc(v.ubi || '')}" aria-label="Ubicación de ${esc(r.code)}"${dis}>${was('ubi')}</td>
           <td class="num"><input class="ri${ch('s')}" data-f="s" inputmode="decimal" value="${fIn(v.s)}" aria-label="Stock de ${esc(r.code)}"${dis}>${was('s')}</td>
@@ -717,6 +725,7 @@ function renderReview() {
           <td>${ed && (r.ed || rev.pend.has(rk(r))) ? `<button type="button" class="undo" data-undo title="Volver a lo que trajo el informe">↺</button>` : ''}</td></tr>`; }).join('')
         : `<tr><td colspan="11" class="empty">No hay piezas de ${esc(sc)} con estos filtros.</td></tr>`) + `</tbody></table></div></article>`;
   }).join('') || '<div class="empty">Elegí al menos una sucursal.</div>';
+  $('revGrid').querySelectorAll('th[data-rs]').forEach(t => t.onclick = () => { const k = t.dataset.rs; if (rev.sk === k) rev.sd *= -1; else { rev.sk = k; rev.sd = ['rank','code','desc','act','ubi'].includes(k) ? 1 : -1; } renderReview(); });
   const byK = new Map(s.rows.map(r => [rk(r), r]));
   $('revGrid').querySelectorAll('tr[data-k]').forEach(tr => {
     const r = byK.get(tr.dataset.k); if (!r) return;
@@ -732,6 +741,45 @@ function renderReview() {
   });
   renderRevBar();
 }
+function revList() { return revTop().flatMap(([sc, L]) => L.map(r => ({ sc, r, v:rowVals(r) }))); }
+function revName() { const s = curSnap(); return 'Revision_piezas_caras_' + String(s && s.day || '').replace(/\//g,'-'); }
+const revCrit = () => 'Las ' + rev.n + ' de mayor ' + (rev.key === 'cu' ? 'costo unitario' : 'valor en stock') + ' por sucursal · orden: ' + REV_COLS.find(c => c[0] === rev.sk)[1] + (rev.sd > 0 ? ' (de menor a mayor)' : ' (de mayor a menor)');
+async function revXlsx() {
+  if (!window.XLSX) return toast('El generador de Excel no cargó');
+  const L = revList(); if (!L.length) return toast('No hay piezas para exportar');
+  const a = [['Revisión de piezas más caras · Karam Automotores'], [snapLabel()], [revCrit() + ' · ' + oriLabel()], [],
+    ['Sucursal','#','Código','Descripción','Origen','Actividad','Ubicación','Stock','Costo unit.','Stock $ costo','Precio lista','Revisada OK','Corregida','Stock informe','Costo informe','Ubicación informe','Conteo físico','Observaciones']];
+  const h = a.length;
+  for (const { sc, r, v } of L) a.push([sc, r._rk, r.code, r.desc, r.ori, r.act, v.ubi || '', R2(v.s), R2(v.cu), R2(v.s * v.cu), R2(v.pl), v.ok ? 'Sí' : '', r.ed ? 'Sí' : '', R2(r.o.s), R2(r.o.cu), r.o.ubi || '', '', '']);
+  const ws = XLSX.utils.aoa_to_sheet(a), MF = '#,##0.00', QF = '#,##0.##';
+  for (let i = h; i < a.length; i++) [[7,QF],[8,MF],[9,MF],[10,MF],[13,QF],[14,MF]].forEach(([c,z]) => { const x = ws[XLSX.utils.encode_cell({ r:i, c })]; if (x && typeof x.v === 'number') x.z = z; });
+  ws['!cols'] = [{wch:12},{wch:5},{wch:18},{wch:38},{wch:7},{wch:11},{wch:12},{wch:8},{wch:14},{wch:15},{wch:14},{wch:11},{wch:10},{wch:12},{wch:14},{wch:14},{wch:13},{wch:28}];
+  ws['!autofilter'] = { ref:'A' + h + ':R' + a.length };
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Revisión');
+  await saveFile(revName() + '.xlsx', new Blob([XLSX.write(wb, { bookType:'xlsx', type:'array' })], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
+async function revPdfOut() {
+  if (!window.jspdf) return toast('El generador de PDF no cargó');
+  const blocks = revTop().filter(b => b[1].length); if (!blocks.length) return toast('No hay piezas para exportar');
+  const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' }), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 10;
+  blocks.forEach(([sc, L], bi) => {
+    if (bi) doc.addPage();
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(16,24,32); doc.text('Revisión de piezas más caras · ' + sc, M, M + 4);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(118,130,146); doc.text(snapLabel() + ' · ' + revCrit(), M, M + 9.5, { maxWidth:W - 2*M });
+    doc.autoTable({ startY:M + 13, margin:{ left:M, right:M }, headStyles:{ fillColor:[15,107,92], textColor:255, fontSize:7.5 }, styles:{ fontSize:7.5, cellPadding:1.4, lineColor:[220,225,232], lineWidth:.1 },
+      columnStyles:{ 0:{halign:'right',cellWidth:8}, 2:{cellWidth:70}, 5:{halign:'right'}, 6:{halign:'right'}, 7:{halign:'right'}, 8:{halign:'center',cellWidth:10}, 9:{cellWidth:22}, 10:{cellWidth:40} },
+      head:[['#','Código','Descripción','Actividad','Ubicación','Stock','Costo unit.','Stock $ costo','OK','Conteo físico','Observaciones']],
+      body:L.map(r => { const v = rowVals(r); return [r._rk, r.code + (r.ed ? ' *' : ''), r.desc, r.act, v.ubi || '', qty(v.s), money(v.cu), money(v.s * v.cu), v.ok ? 'OK' : '', '', '']; }) });
+    let y = doc.lastAutoTable.finalY + 8; if (y > H - 22) { doc.addPage(); y = M + 6; }
+    doc.setFontSize(8.5); doc.setTextColor(16,24,32); doc.text('Controló: ______________________   Fecha: ____/____/______   Firma: ______________________', M, y);
+    if (L.some(r => r.ed)) { doc.setFontSize(7.5); doc.setTextColor(118,130,146); doc.text('* corregida en la app respecto del informe de Autologica', M, y + 5); }
+  });
+  const n = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(7); doc.setTextColor(118,130,146); doc.text('Karam Automotores · Revisión de piezas más caras · ' + new Date().toLocaleDateString('es-AR') + ' · Página ' + i + ' de ' + n, W - M, H - 5, { align:'right' }); }
+  await saveFile(revName() + '.pdf', doc.output('blob'));
+}
+$('revXls').onclick = () => withBusy([$('revXls')], revXlsx);
+$('revPdf').onclick = () => withBusy([$('revPdf')], revPdfOut);
 $('revN').onchange = e => { rev.n = +e.target.value || 25; renderReview(); };
 function renderRevBar() {
   const n = rev.pend.size, b = $('revBar'); b.hidden = !n; if (!n) return;
