@@ -159,9 +159,39 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:700px){.filters{position:static;backdrop-filter:none}}
 .seg{flex-wrap:wrap}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-.wrap.nodata>:not(header):not(#drop):not(#msg){display:none}
+.wrap.nodata>:not(header):not(#drop):not(#msg):not(#histBox){display:none}
 .wrap.nodata .actions{display:none}
 .empty0{color:var(--muted);font-size:13px}
+/* historial de cargas */
+details.hist{padding:0}
+details.hist>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+details.hist>summary::-webkit-details-marker{display:none}
+details.hist>summary h2::before{content:"▸";display:inline-block;width:16px;color:var(--accent);transition:transform .15s}
+details.hist[open]>summary h2::before{transform:rotate(90deg)}
+details.hist .hbody{padding:0 16px 16px;display:flex;flex-direction:column;gap:8px}
+.hacc{display:inline-block;border-radius:4px;font-size:11.5px;font-weight:600;padding:1px 7px;background:var(--surface-2);border:1px solid var(--line)}
+.hacc.Carga,.hacc.Recarga{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.hacc.Eliminación{color:var(--neg)}
+.hacc.Corrección{background:var(--warn-bg);color:var(--warn-ink);border-color:transparent}
+td.hdet{white-space:normal;min-width:260px;max-width:520px;font-size:12.5px;color:var(--ink-2)}
+/* revisión de piezas más caras */
+.rev-grid{display:flex;flex-direction:column;gap:16px}
+.rev-grid .branch{gap:6px}
+.rev table td{padding:4px 8px}
+.rev input.ri{border:1px solid var(--line-2);background:var(--surface);border-radius:6px;padding:4px 6px;width:86px;font-variant-numeric:tabular-nums;text-align:right}
+.rev input.ri.u{width:96px;text-align:left}
+.rev input.ri:disabled{border-color:transparent;background:none}
+.rev input.ri.chg{border-color:var(--a4);background:var(--warn-bg)}
+.rev input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.rev tr.ed td{background:color-mix(in srgb,var(--a4) 9%,transparent)}
+.rev tr.okr td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.rev .was{display:block;font-size:11px;color:var(--muted);text-align:right}
+.rev .undo{border:0;background:none;color:var(--muted);font-size:15px;padding:2px 4px}
+.rev .undo:hover{color:var(--accent)}
+.savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:6;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 14px;box-shadow:var(--shadow)}
+.savebar .btn{background:var(--bg);color:var(--ink);border-color:var(--bg)}
+.savebar .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.edb{display:inline-block;font-size:10.5px;font-weight:700;border-radius:4px;padding:0 4px;background:var(--warn-bg);color:var(--warn-ink);margin-left:4px}
 </style>
 </head><body>
 <div class="wrap">
@@ -187,6 +217,12 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
   </section>
   <div class="msg" id="msg" hidden></div>
 
+  <details class="panel hist" id="histBox">
+    <summary><div><h2>Historial de cargas</h2><p class="note" id="histSub" style="margin-top:2px">Cada informe cargado, eliminado o corregido, con fecha, hora y usuario.</p></div>
+      <span class="muted" style="font-size:12.5px" id="histN"></span></summary>
+    <div class="hbody"><div class="tscroll" id="histTable"><div class="empty0">Abrilo para ver el historial.</div></div></div>
+  </details>
+
   <nav class="filters" aria-label="Filtros">
     <div class="fgroup"><span class="eyebrow">Sucursal</span><div class="chips" id="fSuc"></div></div>
     <div class="fgroup"><span class="eyebrow">Origen</span><div class="seg" id="fOri"></div></div>
@@ -195,6 +231,18 @@ td.desc{max-width:280px;overflow:hidden;text-overflow:ellipsis}
   </nav>
 
   <section class="kpis" id="kpis" aria-label="Totales de la selección"></section>
+
+  <section class="panel rev" id="revPanel">
+    <div class="panel-h">
+      <div><h2>Revisión · piezas más caras por sucursal</h2><p id="revSub"></p></div>
+      <div class="dtools">
+        <div class="seg" id="revKey" role="group" aria-label="Ordenar la revisión"></div>
+        <label class="muted" style="font-size:13px">Mostrar <select id="revN" aria-label="Piezas por sucursal"><option>25</option><option>50</option><option>100</option><option>200</option></select> por sucursal</label>
+      </div>
+    </div>
+    <div class="rev-grid" id="revGrid"></div>
+    <div class="savebar" id="revBar" hidden></div>
+  </section>
 
   <section class="panel" id="evoPanel">
     <div class="panel-h"><div><h2>Evolución del inventario</h2><p id="evoSub">Marcá en la lista de fechas las que querés comparar.</p></div>
@@ -356,16 +404,33 @@ let HERR = new Set();
 const hk = c => String(c ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9#]/g,'');
 const isHerr = r => r.herr === undefined ? (r.herr = HERR.has(hk(r.code))) : r.herr;
 const tipoOk = r => isHerr(r) ? sel.verH : sel.verR;
-const det = { q:'', f:'all', key:'sc', dir:-1, page:0, size:50 };
+const det = { q:'', f:'all', key:'cu', dir:-1, page:0, size:50 };
 const gSort = { key:'rank', dir:1 };
 const knownActs = new Set();
+
+/* ---------- correcciones de la revisión ----------
+   Se guardan aparte del informe (por informe e índice de fila) y se aplican encima; r.o guarda lo que trajo el informe. */
+let EDITS = {}, EDIT_SUCS = null, ME_U = '';
+const PW = window.parent && window.parent !== window ? window.parent : null;
+const canEdit = suc => !EDIT_SUCS || EDIT_SUCS.has(suc);
+function applyEdit(r) {
+  if (!r.o) r.o = { s:r.s, cu:r.cu, pl:r.pl, ubi:r.ubi, sc:r.sc, sp:r.sp };
+  const o = r.o, e = EDITS[r.pid] && EDITS[r.pid][r.ix];
+  const v = k => e && e[k] !== undefined && e[k] !== null ? e[k] : o[k];
+  r.s = v('s'); r.cu = v('cu'); r.pl = v('pl'); r.ubi = v('ubi');
+  r.sc = (r.s !== o.s || r.cu !== o.cu) ? r.s * r.cu : o.sc;
+  r.sp = (r.s !== o.s || r.pl !== o.pl) ? r.s * r.pl : o.sp;
+  r.ed = r.s !== o.s || r.cu !== o.cu || r.pl !== o.pl || r.ubi !== o.ubi;
+  r.ok = !!(e && e.ok);
+  return r;
+}
 
 /* Una fecha por día: si se cargan varios informes del mismo día (por ejemplo, uno de La Rioja y Catamarca y otro del Quick Lane),
    se juntan; las sucursales que trae el informe nuevo reemplazan a las mismas del anterior. */
 const dayOf = p => { const m = String(p.emitido || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[1].padStart(2,'0') + '/' + m[2].padStart(2,'0') + '/' + m[3] : String(p.file || '?'); };
 function addSnap(p) {
   const id = (p.emitido || p.file) + '|' + p.rows.length;
-  const rows = p.rows.map(r => ({ ...r, suc:sucShort(r.suc), act:actShort(r.act) }));
+  const rows = p.rows.map((r, i) => applyEdit({ ...r, suc:sucShort(r.suc), act:actShort(r.act), pid:id, ix:i }));
   const day = dayOf(p), sid = 'D:' + day, d = toDate(p.emitido), nuevas = new Set(rows.map(r => r.suc));
   let x = snaps.find(o => o.id === sid);
   if (!x) { x = { id:sid, day, emitido:p.emitido, file:p.file, rows:[], d, parts:[] }; snaps.push(x); }
@@ -606,7 +671,7 @@ function renderDetail(items) {
   const slice = rows.slice(det.page * det.size, (det.page + 1) * det.size);
   $('detSub').textContent = nf0.format(rows.length) + ' filas (código × sucursal) · ordenado por ' + DET_COLS.find(c => c[0] === det.key)[1].toLowerCase() + (det.dir < 0 ? ', mayor a menor' : ', menor a mayor');
   const th = DET_COLS.map(([k,l,n]) => `<th class="sort${n?' num':''}" data-k="${k}">${l}<span class="ar">${det.key===k?(det.dir>0?'▲':'▼'):''}</span></th>`).join('');
-  const body = slice.length ? slice.map(x => `<tr><td>${esc(x.code)}${HERR.size && isHerr(x) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}</td><td class="desc" title="${esc(x.desc)}">${esc(x.desc)}</td><td><span class="ori" title="${esc(ORI[x.ori]||'Otro')}">${esc(x.ori)}</span></td><td>${esc(x.ubi)||'<span class="muted">—</span>'}</td><td><span class="act"><i style="background:${colorOf(x.act)}"></i>${esc(x.act)}</span></td><td>${esc(x.suc)}</td>${cell('s',x)}${cell('cu',x)}${cell('sc',x)}${cell('pl',x)}${cell('sp',x)}</tr>`).join('') : `<tr><td colspan="${DET_COLS.length}" class="empty">No hay piezas con estos filtros.</td></tr>`;
+  const body = slice.length ? slice.map(x => `<tr><td>${esc(x.code)}${HERR.size && isHerr(x) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}${x.ed ? ` <span class="edb" title="Corregida en la revisión. Informe: stock ${qty(x.o.s)}, costo ${money(x.o.cu)}${x.o.ubi ? ', ubic. ' + esc(x.o.ubi) : ''}">ED</span>` : ''}</td><td class="desc" title="${esc(x.desc)}">${esc(x.desc)}</td><td><span class="ori" title="${esc(ORI[x.ori]||'Otro')}">${esc(x.ori)}</span></td><td>${esc(x.ubi)||'<span class="muted">—</span>'}</td><td><span class="act"><i style="background:${colorOf(x.act)}"></i>${esc(x.act)}</span></td><td>${esc(x.suc)}</td>${cell('s',x)}${cell('cu',x)}${cell('sc',x)}${cell('pl',x)}${cell('sp',x)}</tr>`).join('') : `<tr><td colspan="${DET_COLS.length}" class="empty">No hay piezas con estos filtros.</td></tr>`;
   $('detTable').innerHTML = `<table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
   $('detTable').querySelectorAll('th.sort').forEach(t => t.onclick = () => { const k = t.dataset.k; if (det.key === k) det.dir *= -1; else { det.key = k; det.dir = DET_COLS.find(c => c[0] === k)[2] ? -1 : 1; } det.page = 0; renderDetail(filtered()); });
   $('pager').innerHTML = `<button type="button" id="pPrev" ${det.page===0?'disabled':''}>Anterior</button><span>Página ${det.page+1} de ${pages}</span><button type="button" id="pNext" ${det.page>=pages-1?'disabled':''}>Siguiente</button>`;
@@ -616,7 +681,98 @@ function renderDetail(items) {
 $('q').oninput = e => { det.q = e.target.value; det.page = 0; renderDetail(filtered()); };
 $('fDet').onchange = e => { det.f = e.target.value; det.page = 0; renderDetail(filtered()); };
 
-function render() { document.querySelector('.wrap').classList.toggle('nodata', !snaps.length); if (!snaps.length) return; const items = filtered(); renderKpis(items); renderEvo(); renderGroupTable(items); renderBranches(items); renderCharts(items); renderDetail(items); }
+/* ---------- revisión de las piezas más caras ---------- */
+const rev = { key:'cu', n:25, pend:new Map() };
+const REV_K = [['cu','Costo unitario'],['sc','Valor en stock']];
+const rk = r => r.pid + '#' + r.ix;
+const fIn = v => v == null ? '' : String(Math.round(v * 100) / 100).replace('.', ',');
+function revTop() {
+  const items = filtered(), g = groupBy(items, r => r.suc);
+  const hay = sucsOf(curSnap());
+  return selSucs().filter(sc => hay.has(sc)).map(sc => [sc, (g.get(sc) || []).slice().sort((a,b) => b.o[rev.key] - a.o[rev.key] || a.code.localeCompare(b.code)).slice(0, rev.n)]);
+}
+function rowVals(r) { const p = rev.pend.get(rk(r)); return p || { s:r.s, cu:r.cu, pl:r.pl, ubi:r.ubi, ok:r.ok }; }
+function renderReview() {
+  const s = curSnap(); if (!s) return;
+  $('revKey').innerHTML = REV_K.map(([k,l]) => `<button type="button" aria-pressed="${rev.key===k}" data-rk="${k}">${esc(l)}</button>`).join('');
+  $('revKey').querySelectorAll('button').forEach(b => b.onclick = () => { rev.key = b.dataset.rk; renderReview(); });
+  $('revN').value = String(rev.n);
+  const blocks = revTop(), nEd = s.rows.filter(r => r.ed).length, nOk = s.rows.filter(r => r.ok).length;
+  $('revSub').textContent = `Stock al ${s.day} · las ${rev.n} de mayor ${rev.key === 'cu' ? 'costo unitario' : 'valor en stock (stock × costo)'} de cada sucursal. Corregí stock, costo, precio o ubicación si no coincide con lo físico y marcá OK las revisadas.` +
+    (nEd || nOk ? ` En esta fecha: ${nEd} corregida${nEd===1?'':'s'}, ${nOk} revisada${nOk===1?'':'s'} OK.` : '');
+  $('revGrid').innerHTML = blocks.map(([sc, L]) => {
+    const ed = canEdit(sc), tot = L.reduce((t,r) => t + rowVals(r).s * rowVals(r).cu, 0), ok = L.filter(r => rowVals(r).ok).length;
+    return `<article class="branch"><div class="branch-h"><h3>${esc(sc)}</h3><span class="s">${L.length} piezas · ${money(tot)} a costo · ${ok} de ${L.length} revisadas OK${ed ? '' : ' · solo lectura (tu usuario no tiene esta sucursal)'}</span></div>
+      <div class="tscroll"><table><thead><tr><th class="num">#</th><th>Código</th><th>Descripción</th><th>Act.</th><th>Ubicación</th><th class="num">Stock</th><th class="num">Costo unit.</th><th class="num">Stock $ costo</th><th class="num">Precio lista</th><th title="Marcá las piezas que ya controlaste">OK</th><th></th></tr></thead><tbody>` +
+      (L.length ? L.map((r, i) => { const v = rowVals(r), dis = ed ? '' : ' disabled', o = r.o, ch = k => v[k] !== o[k] ? ' chg' : '';
+        const was = k => v[k] !== o[k] ? `<span class="was">informe ${k === 'ubi' ? esc(o[k] || '—') : k === 's' ? qty(o[k]) : money(o[k])}</span>` : '';
+        return `<tr data-k="${esc(rk(r))}" class="${r.ed || rev.pend.has(rk(r)) ? 'ed' : ''}${v.ok ? ' okr' : ''}"><td class="num muted">${i+1}</td><td>${esc(r.code)}${HERR.size && isHerr(r) ? ' <span class="ori" title="Herramienta especial">HE</span>' : ''}</td><td class="desc" title="${esc(r.desc)}">${esc(r.desc)}</td>
+          <td><span class="act"><i style="background:${colorOf(r.act)}"></i>${esc(r.act)}</span></td>
+          <td><input class="ri u${ch('ubi')}" data-f="ubi" value="${esc(v.ubi || '')}" aria-label="Ubicación de ${esc(r.code)}"${dis}>${was('ubi')}</td>
+          <td class="num"><input class="ri${ch('s')}" data-f="s" inputmode="decimal" value="${fIn(v.s)}" aria-label="Stock de ${esc(r.code)}"${dis}>${was('s')}</td>
+          <td class="num"><input class="ri${ch('cu')}" data-f="cu" inputmode="decimal" value="${fIn(v.cu)}" aria-label="Costo unitario de ${esc(r.code)}"${dis}>${was('cu')}</td>
+          <td class="num" data-sc>${money(v.s * v.cu)}</td>
+          <td class="num"><input class="ri${ch('pl')}" data-f="pl" inputmode="decimal" value="${fIn(v.pl)}" aria-label="Precio de lista de ${esc(r.code)}"${dis}>${was('pl')}</td>
+          <td><input type="checkbox" data-f="ok" ${v.ok ? 'checked' : ''} aria-label="${esc(r.code)} revisada"${dis}></td>
+          <td>${ed && (r.ed || rev.pend.has(rk(r))) ? `<button type="button" class="undo" data-undo title="Volver a lo que trajo el informe">↺</button>` : ''}</td></tr>`; }).join('')
+        : `<tr><td colspan="11" class="empty">No hay piezas de ${esc(sc)} con estos filtros.</td></tr>`) + `</tbody></table></div></article>`;
+  }).join('') || '<div class="empty">Elegí al menos una sucursal.</div>';
+  const byK = new Map(s.rows.map(r => [rk(r), r]));
+  $('revGrid').querySelectorAll('tr[data-k]').forEach(tr => {
+    const r = byK.get(tr.dataset.k); if (!r) return;
+    const read = () => { const g = f => tr.querySelector(`[data-f="${f}"]`); return { ubi:g('ubi').value.trim(), s:numAR(g('s').value), cu:numAR(g('cu').value), pl:numAR(g('pl').value), ok:g('ok').checked }; };
+    const upd = () => { const v = read(), same = v.ubi === (r.ubi || '') && v.s === r.s && v.cu === r.cu && v.pl === r.pl && v.ok === r.ok;
+      if (same) rev.pend.delete(rk(r)); else rev.pend.set(rk(r), v);
+      tr.querySelector('[data-sc]').textContent = money(v.s * v.cu);
+      for (const f of ['ubi','s','cu','pl']) tr.querySelector(`[data-f="${f}"]`).classList.toggle('chg', v[f] !== (f === 'ubi' ? (r.o.ubi || '') : r.o[f]));
+      tr.classList.toggle('ed', r.ed || rev.pend.has(rk(r))); tr.classList.toggle('okr', v.ok); renderRevBar(); };
+    tr.querySelectorAll('input').forEach(i => { i.addEventListener('input', upd); i.addEventListener('change', upd); });
+    const u = tr.querySelector('[data-undo]'); if (u) u.onclick = () => { const o = r.o, v = { ubi:o.ubi || '', s:o.s, cu:o.cu, pl:o.pl, ok:false };
+      if (!r.ed && !r.ok) rev.pend.delete(rk(r)); else rev.pend.set(rk(r), v); renderReview(); };
+  });
+  renderRevBar();
+}
+$('revN').onchange = e => { rev.n = +e.target.value || 25; renderReview(); };
+function renderRevBar() {
+  const n = rev.pend.size, b = $('revBar'); b.hidden = !n; if (!n) return;
+  b.innerHTML = `<span>${n} pieza${n===1?'':'s'} con cambios sin guardar</span><span style="display:flex;gap:8px"><button class="btn" type="button" id="revCancel">Descartar</button><button class="btn primary" type="button" id="revSave">Guardar cambios</button></span>`;
+  $('revCancel').onclick = () => { rev.pend.clear(); renderReview(); };
+  $('revSave').onclick = saveReview;
+}
+async function saveReview() {
+  const all = new Map(); for (const x of snaps) for (const r of x.rows) all.set(rk(r), [r, x]);
+  const changes = [], days = new Set();
+  for (const [k, v] of rev.pend) { const z = all.get(k); if (!z) continue; const [r, x] = z, o = r.o, e = {};
+    if (v.s !== o.s) e.s = v.s; if (v.cu !== o.cu) e.cu = v.cu; if (v.pl !== o.pl) e.pl = v.pl; if (v.ubi !== (o.ubi || '')) e.ubi = v.ubi; if (v.ok) e.ok = true;
+    changes.push({ pid:r.pid, ix:r.ix, code:r.code, suc:r.suc, edit:Object.keys(e).length ? e : null, before:{ s:r.s, cu:r.cu, pl:r.pl, ubi:r.ubi || '', ok:r.ok }, after:v }); days.add(x.day); }
+  if (!changes.length) { rev.pend.clear(); renderReview(); return; }
+  const btn = $('revSave'); btn.disabled = true;
+  try { if (PW && PW.__actEdit) await PW.__actEdit(changes, [...days].join(', ')); }
+  catch (err) { btn.disabled = false; toast('No se pudo guardar: ' + (err.message || err)); return; }
+  for (const c of changes) { EDITS[c.pid] = EDITS[c.pid] || {}; if (c.edit) EDITS[c.pid][c.ix] = c.edit; else delete EDITS[c.pid][c.ix]; applyEdit(all.get(c.pid + '#' + c.ix)[0]); }
+  rev.pend.clear(); renderSnaps(); render(); toast(changes.length + ' pieza' + (changes.length===1?'':'s') + ' guardada' + (changes.length===1?'':'s') + (PW && PW.__actEdit ? '' : ' (solo en esta pantalla)')); loadHist();
+}
+
+/* ---------- historial de cargas ---------- */
+let HIST = null, histAll = false;
+async function loadHist() {
+  if (!PW || !PW.__actHist) return;
+  try { HIST = await PW.__actHist(); } catch (e) { $('histTable').innerHTML = '<div class="empty0">No se pudo leer el historial: ' + esc(e.message || e) + '</div>'; return; }
+  renderHist();
+}
+function renderHist() {
+  if (!HIST) return;
+  const L = histAll ? HIST : HIST.slice(0, 30), dt = t => { const d = new Date(t); return isNaN(d) ? esc(t || '') : d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' }); };
+  $('histN').textContent = HIST.length + ' movimiento' + (HIST.length===1?'':'s');
+  $('histTable').innerHTML = HIST.length ? `<table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Stock al</th><th>Archivo</th><th>Sucursales</th><th class="num">Piezas</th><th class="num">Stock $ costo</th><th>Detalle</th></tr></thead><tbody>` +
+    L.map(h => `<tr><td>${dt(h.t)}</td><td>${esc(String(h.u || '—').split('@')[0])}</td><td><span class="hacc ${esc(h.acc)}">${esc(h.acc)}</span></td><td>${esc(String(h.emitido || '').split(' ')[0] || '—')}</td><td>${esc(h.file || '')}</td><td>${esc((h.sucs || []).map(sucShort).join(', '))}</td>
+      <td class="num">${h.n != null ? nf0.format(h.n) : ''}</td><td class="num">${h.sc != null ? money(h.sc) : ''}</td><td class="hdet">${esc(h.det || '')}${h.ant ? '<span class="muted">anterior al historial</span>' : ''}</td></tr>`).join('') + '</tbody></table>' +
+    (HIST.length > 30 ? `<p class="note" style="margin-top:6px"><button type="button" class="btn" id="histMore" style="padding:3px 10px;font-size:12.5px">${histAll ? 'Ver solo las últimas 30' : 'Ver las ' + HIST.length}</button></p>` : '')
+    : '<div class="empty0">Todavía no hay cargas registradas.</div>';
+  const m = $('histMore'); if (m) m.onclick = () => { histAll = !histAll; renderHist(); };
+}
+
+function render() { document.querySelector('.wrap').classList.toggle('nodata', !snaps.length); if (!snaps.length) return; const items = filtered(); renderKpis(items); renderReview(); renderEvo(); renderGroupTable(items); renderBranches(items); renderCharts(items); renderDetail(items); }
 
 /* ---------- carga ---------- */
 async function loadFiles(files) {
@@ -642,7 +798,7 @@ async function loadFiles(files) {
       else errs.push(f.name + ': no lo reconozco. Tiene que ser el informe "Stock a costo > Detallado" de Autologica, exportado a Excel.');
     } catch (e) { errs.push(f.name + ': no se pudo leer (' + e.message + ').'); }
   }
-  if (ok.length) { renderSnaps(); renderFilters(); render(); toast('Cargado: ' + ok.join(' · ')); }
+  if (ok.length) { renderSnaps(); renderFilters(); render(); toast('Cargado: ' + ok.join(' · ') + ' · revisá las piezas más caras'); loadHist(); setTimeout(() => $('revPanel').scrollIntoView({ behavior:'smooth', block:'start' }), 150); }
   showMsg(errs.join(' '));
 }
 const drop = $('drop'), fileIn = $('file');
@@ -777,13 +933,17 @@ window.__actTools = (codes, ver) => {
   if (ver) { sel.verR = ver.verR !== false; sel.verH = !!ver.verH; if (!sel.verR && !sel.verH) sel.verR = true; }
   renderFilters(); render();
 };
-window.__actLoad = list => {
+window.__actPerm = o => { EDIT_SUCS = o && o.sucs ? new Set(o.sucs.map(sucShort)) : null; ME_U = (o && o.user) || ''; };
+window.__actLoad = (list, edits) => {
   window.__actLoading = false;
+  EDITS = edits || {};
   for (const p of (list || [])) addSnap(p);
   evoLoad();
   if (snaps.length) sel.snap = snaps[snaps.length - 1].id;
-  renderSnaps(); renderFilters(); render();
+  renderSnaps(); renderFilters(); render(); if ($('histBox').open) loadHist();
 };
+$('histBox').addEventListener('toggle', () => { if ($('histBox').open && !HIST) loadHist(); });
+if (!PW || !PW.__actHist) $('histBox').hidden = true;
 renderSnaps(); renderFilters(); render();
 </script>
 </body></html>

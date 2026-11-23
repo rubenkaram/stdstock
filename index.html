@@ -2542,25 +2542,58 @@ window.__actSave=async p=>{
   const rows=p.rows.map(r=>[ix(S1,r.suc),ix(A1,r.act),r.code,r.ori,r.desc,r.ubi,r.s,r.cu,r.sc,r.pl,r.sp]);
   const id=actId(p),doc='stockact-'+slug(id);
   await writeDataset(doc,{emitido:p.emitido||'',file:p.file||'',S:S1,A:A1},rows);
-  const L=(await actIndex()).filter(x=>x.id!==id);
+  const L0=await actIndex(),prev=L0.some(x=>x.id===id),L=L0.filter(x=>x.id!==id);
   L.push({id,doc,emitido:p.emitido||'',file:p.file||'',n:rows.length,usuario:ME()?ME().email:'',fecha:new Date().toISOString()});
   await db.doc('config/stockact').set({snaps:L});
   logAct('Cargó stock por actividad',`${p.file||''} · emitido ${p.emitido||'?'} · ${rows.length} piezas`,'Todas');
+  await actLogAdd({acc:prev?'Recarga':'Carga',doc,file:p.file||'',emitido:p.emitido||'',sucs:S1,n:rows.length,sc:Math.round(p.rows.reduce((t,r)=>t+(+r.sc||0),0)),det:prev?'Reemplazó un informe igual ya cargado':''});
 };
+/* Historial de cargas, eliminaciones y correcciones del stock por actividad (config/stockactlog) */
+async function actLogAdd(e){
+  if(!db)return;try{const d=await db.doc('config/stockactlog').get(),L=d.exists?(d.data().items||[]):[];
+    L.push(Object.assign({t:new Date().toISOString(),u:ME()?ME().email:''},e));await db.doc('config/stockactlog').set({items:L.slice(-1500)})}
+  catch(err){toast('No se pudo guardar el historial de carga: '+(err.message||err.code))}
+}
+window.__actHist=async()=>{
+  if(!db)return [];const d=await db.doc('config/stockactlog').get(),L=d.exists?(d.data().items||[]):[];
+  /* lo anterior a este historial sale del registro de actividad (admin) o de la lista de fechas guardadas */
+  const t0=L.length?L.reduce((m,x)=>x.t<m?x.t:m,L[0].t):'9999';let old=[];
+  if(S.act&&S.act.length)old=S.act.filter(a=>/stock por actividad/i.test(a.tipo||'')&&String(a.fecha)<t0).map(a=>{const m=String(a.detalle||'');
+    return {t:a.fecha,u:a.usuario,acc:/Elimin/i.test(a.tipo)?'Eliminación':'Carga',file:(m.split(' · emitido')[0]||'').trim(),emitido:(m.match(/emitido ([^·]+)/)||[])[1]||'',n:+((m.match(/([\d.]+) piezas/)||[])[1]||'').replace(/\./g,'')||null,ant:1}});
+  else{try{old=(await actIndex()).filter(x=>String(x.fecha)<t0).map(x=>({t:x.fecha,u:x.usuario||'',acc:'Carga',file:x.file,emitido:x.emitido,n:x.n,ant:1}))}catch(e){}}
+  return old.concat(L).sort((a,b)=>String(b.t).localeCompare(String(a.t)));
+};
+/* Correcciones hechas al revisar las piezas: se guardan aparte (config/stockactedit) y se aplican sobre el informe original */
+window.__actEdit=async(changes,day)=>{
+  if(!db)throw new Error('sin conexión con la base');
+  const d=await db.doc('config/stockactedit').get(),E=d.exists?(d.data().e||{}):{};
+  for(const c of changes){const k=slug(c.pid);E[k]=E[k]||{};if(c.edit)E[k][c.ix]=Object.assign({},c.edit,{code:c.code,suc:c.suc,u:ME()?ME().email:'',t:new Date().toISOString()});else delete E[k][c.ix];if(!Object.keys(E[k]).length)delete E[k]}
+  await db.doc('config/stockactedit').set({e:E});
+  const f=v=>v==null?'—':typeof v==='number'?String(Math.round(v*100)/100).replace('.',','):v;
+  const det=changes.map(c=>{const p=[];for(const [fk,l] of [['s','stock'],['cu','costo'],['pl','lista'],['ubi','ubic.']])if(c.before[fk]!==c.after[fk])p.push(l+' '+f(c.before[fk])+'→'+f(c.after[fk]));
+    if(!!c.before.ok!==!!c.after.ok)p.push(c.after.ok?'revisada OK':'quitó OK');return c.code+' ('+c.suc+')'+(p.length?': '+p.join(', '):'')});
+  await actLogAdd({acc:'Corrección',emitido:day||'',sucs:[...new Set(changes.map(c=>c.suc))],n:changes.length,det:det.join(' · ')});
+  logAct('Corrigió stock por actividad',`stock al ${day||'?'} · ${changes.length} pieza(s)`,'Todas');
+  return true;
+};
+const actEdits=async()=>{try{const d=await db.doc('config/stockactedit').get(),E=d.exists?(d.data().e||{}):{},o={};const L=await actIndex();
+  for(const x of L){const k=slug(x.id);if(E[k])o[x.id]=E[k]}return o}catch(e){return {}}};
 window.__actDel=async id=>{
   if(!db)return;const L=await actIndex(),x=L.find(o=>o.id===id)||{id,doc:'stockact-'+slug(id),emitido:String(id).split('|')[0]};
   await readDataset(x.doc).catch(()=>null);await deleteDataset(x.doc);
   await db.doc('config/stockact').set({snaps:L.filter(o=>o.id!==id)});
   logAct('Eliminó stock por actividad',`emitido ${x.emitido||'?'}`,'Todas');
+  try{const d=await db.doc('config/stockactedit').get(),E=d.exists?(d.data().e||{}):{};if(E[slug(id)]){delete E[slug(id)];await db.doc('config/stockactedit').set({e:E})}}catch(e){}
+  await actLogAdd({acc:'Eliminación',doc:x.doc,file:x.file||'',emitido:x.emitido||'',n:x.n||null});
 };
 async function mountStockAct(){
   const box=$('#actBox');if(!box)return;
   const fr=document.createElement('iframe');fr.title='Stock por actividad';fr.src='stock-actividad.html';
   fr.style.cssText='display:block;width:100%;height:calc(100vh - 150px);min-height:640px;border:0;background:var(--bg)';
-  let list=[];const dataP=(async()=>{try{if(!db)return;const L=await actIndex();
+  let list=[],edits={};const dataP=(async()=>{try{if(!db)return;edits=await actEdits();const L=await actIndex();
     for(const x of L){const d=await readDataset(x.doc);if(d)list.push({emitido:d.meta.emitido,file:d.meta.file,rows:d.rows.map(r=>({suc:d.meta.S[r[0]],act:d.meta.A[r[1]],code:r[2],ori:r[3],desc:r[4],ubi:r[5],s:r[6],cu:r[7],sc:r[8],pl:r[9],sp:r[10]}))})}}
     catch(e){toast('No se pudo leer el stock por actividad: '+(e.message||e.code))}})();
-  fr.addEventListener('load',async()=>{await dataP;try{if(fr.contentWindow.__actTools)fr.contentWindow.__actTools((S.herr&&S.herr.items||[]).map(x=>x[0]),{verR:S.P.verR!==false,verH:!!S.P.verH});fr.contentWindow.__actLoad(list)}catch(e){toast('No se pudo abrir Stock por actividad: '+e.message)}});
+  fr.addEventListener('load',async()=>{await dataP;try{if(fr.contentWindow.__actTools)fr.contentWindow.__actTools((S.herr&&S.herr.items||[]).map(x=>x[0]),{verR:S.P.verR!==false,verH:!!S.P.verH});if(fr.contentWindow.__actPerm)fr.contentWindow.__actPerm({sucs:isAdmin()?null:mySucs(),user:ME()?ME().email:''});fr.contentWindow.__actLoad(list,edits)}catch(e){toast('No se pudo abrir Stock por actividad: '+e.message)}});
   box.innerHTML='';box.appendChild(fr);
 }
 
